@@ -1,0 +1,300 @@
+version: "4.1"
+name: 手环项目
+type: ARM
+deviceName: null
+packDir: .pack/Keil/STM32F1xx_DFP.2.4.1
+srcDirs: []
+virtualFolder:
+  name: <virtual_root>
+  files: []
+  folders:
+    - name: User
+      files:
+        - path: User/main.c
+        - path: User/stm32f10x_conf.h
+        - path: User/stm32f10x_it.c
+        - path: User/stm32f10x_it.h
+        - path: LIbrary/head.h
+      folders: []
+    - name: HardWare
+      files:
+        - path: Hardware/Key.h
+        - path: Hardware/Key.c
+        - path: Hardware/Max30102.c
+        - path: Hardware/Max30102.h
+        - path: Hardware/Oled.c
+        - path: Hardware/Oled.h
+        - path: Hardware/Oled_Font.h
+        - path: Hardware/algorithm.c
+        - path: Hardware/algorithm.h
+        - path: Hardware/blood.c
+        - path: Hardware/blood.h
+        - path: Hardware/usart.c
+        - path: Hardware/usart.h
+        - path: Hardware/xiic.c
+        - path: Hardware/xiic.h
+        - path: Hardware/DHT11.c
+        - path: Hardware/DHT11.h
+        - path: Hardware/adxl345.c
+        - path: Hardware/adxl345.h
+      folders: []
+    - name: Start
+      files:
+        - path: Start/core_cm3.c
+        - path: Start/core_cm3.h
+        - path: Start/startup_stm32f10x_md.s
+        - path: Start/stm32f10x.h
+        - path: Start/system_stm32f10x.c
+        - path: Start/system_stm32f10x.h
+      folders: []
+    - name: Library
+      files:
+        - path: LIbrary/misc.c
+        - path: LIbrary/misc.h
+        - path: LIbrary/stm32f10x_adc.c
+        - path: LIbrary/stm32f10x_adc.h
+        - path: LIbrary/stm32f10x_bkp.c
+        - path: LIbrary/stm32f10x_bkp.h
+        - path: LIbrary/stm32f10x_can.c
+        - path: LIbrary/stm32f10x_can.h
+        - path: LIbrary/stm32f10x_cec.c
+        - path: LIbrary/stm32f10x_cec.h
+        - path: LIbrary/stm32f10x_crc.c
+        - path: LIbrary/stm32f10x_crc.h
+        - path: LIbrary/stm32f10x_dac.c
+        - path: LIbrary/stm32f10x_dac.h
+        - path: LIbrary/stm32f10x_dbgmcu.c
+        - path: LIbrary/stm32f10x_dbgmcu.h
+        - path: LIbrary/stm32f10x_dma.c
+        - path: LIbrary/stm32f10x_dma.h
+        - path: LIbrary/stm32f10x_exti.c
+        - path: LIbrary/stm32f10x_exti.h
+        - path: LIbrary/stm32f10x_flash.c
+        - path: LIbrary/stm32f10x_flash.h
+        - path: LIbrary/stm32f10x_fsmc.c
+        - path: LIbrary/stm32f10x_fsmc.h
+        - path: LIbrary/stm32f10x_gpio.c
+        - path: LIbrary/stm32f10x_gpio.h
+        - path: LIbrary/stm32f10x_i2c.c
+        - path: LIbrary/stm32f10x_i2c.h
+        - path: LIbrary/stm32f10x_iwdg.c
+        - path: LIbrary/stm32f10x_iwdg.h
+        - path: LIbrary/stm32f10x_pwr.c
+        - path: LIbrary/stm32f10x_pwr.h
+        - path: LIbrary/stm32f10x_rcc.c
+        - path: LIbrary/stm32f10x_rcc.h
+        - path: LIbrary/stm32f10x_rtc.c
+        - path: LIbrary/stm32f10x_rtc.h
+        - path: LIbrary/stm32f10x_sdio.c
+        - path: LIbrary/stm32f10x_sdio.h
+        - path: LIbrary/stm32f10x_spi.c
+        - path: LIbrary/stm32f10x_spi.h
+        - path: LIbrary/stm32f10x_tim.c
+        - path: LIbrary/stm32f10x_tim.h
+        - path: LIbrary/stm32f10x_usart.c
+        - path: LIbrary/stm32f10x_usart.h
+        - path: LIbrary/stm32f10x_wwdg.c
+        - path: LIbrary/stm32f10x_wwdg.h
+      folders: []
+    - name: System
+      files:
+        - path: System/Delay.h
+        - path: System/Delay.c
+        - path: System/MyRTC.c
+        - path: System/MyRTC.h
+      folders: []
+    - name: FreeRTOS
+      files: []
+      folders:
+        - name: SRC
+          files:
+            - path: FreeRTOS/SRC/croutine.c
+            - path: FreeRTOS/SRC/event_groups.c
+            - path: FreeRTOS/SRC/list.c
+            - path: FreeRTOS/SRC/queue.c
+            - path: FreeRTOS/SRC/stream_buffer.c
+            - path: FreeRTOS/SRC/tasks.c
+            - path: FreeRTOS/SRC/timers.c
+          folders: []
+        - name: INC
+          files:
+            - path: FreeRTOS/FreeRTOSConfig.h
+            - path: FreeRTOS/INC/atomic.h
+            - path: FreeRTOS/INC/croutine.h
+            - path: FreeRTOS/INC/deprecated_definitions.h
+            - path: FreeRTOS/INC/event_groups.h
+            - path: FreeRTOS/INC/list.h
+            - path: FreeRTOS/INC/message_buffer.h
+            - path: FreeRTOS/INC/mpu_prototypes.h
+            - path: FreeRTOS/INC/mpu_wrappers.h
+            - path: FreeRTOS/INC/portable.h
+            - path: FreeRTOS/INC/projdefs.h
+            - path: FreeRTOS/INC/queue.h
+            - path: FreeRTOS/INC/semphr.h
+            - path: FreeRTOS/INC/stack_macros.h
+            - path: FreeRTOS/INC/StackMacros.h
+            - path: FreeRTOS/INC/stream_buffer.h
+            - path: FreeRTOS/INC/task.h
+            - path: FreeRTOS/INC/timers.h
+            - path: FreeRTOS/PORT/portmacro.h
+            - path: FreeRTOS/INC/FreeRTOS.h
+          folders: []
+        - name: PORT
+          files:
+            - path: FreeRTOS/PORT/heap_4.c
+            - path: FreeRTOS/PORT/port.c
+          folders: []
+dependenceList: []
+outDir: build
+miscInfo:
+  uid: 6405f8252715c9cbb8d503bedd58ec46
+targets:
+  Target 1:
+    cppPreprocessAttrs:
+      defineList:
+        - STM32F10X_MD
+        - USE_STDPERIPH_DRIVER
+      incList:
+        - .
+        - Start
+        - User
+        - LIbrary
+        - System
+        - Hardware
+        - FreeRTOS
+        - FreeRTOS/INC
+        - FreeRTOS/PORT
+        - FreeRTOS/SRC
+        - app/usartf
+        - .cmsis/include
+        - RTE/_Target 1
+      libList: []
+    excludeList: []
+    settings:
+      debugger: cortex-debug
+    toolchain: AC5
+    toolchainConfigMap:
+      AC5:
+        archExtensions: ""
+        cpuType: Cortex-M3
+        floatingPointHardware: none
+        options:
+          version: 4
+          afterBuildTasks: []
+          asm-compiler:
+            defines:
+              - STM32F10X_MD
+          beforeBuildTasks: []
+          c/cpp-compiler:
+            CXX_FLAGS: --diag_suppress=1 --diag_suppress=1295
+            C_FLAGS: --diag_suppress=1 --diag_suppress=1295
+            c99-mode: true
+            one-elf-section-per-function: true
+            optimization: level-0
+            warnings: all-warnings
+          global:
+            output-debug-info: enable
+            use-microLIB: false
+          linker:
+            $outputTaskExcludes:
+              - .bin
+            output-format: elf
+            ro-base: "0x08000000"
+            rw-base: "0x20000000"
+            xo-base: ""
+        scatterFilePath: ""
+        storageLayout:
+          RAM:
+            - id: 1
+              isChecked: false
+              mem:
+                size: "0x0"
+                startAddr: "0x0"
+              noInit: false
+              tag: RAM
+            - id: 2
+              isChecked: false
+              mem:
+                size: "0x0"
+                startAddr: "0x0"
+              noInit: false
+              tag: RAM
+            - id: 3
+              isChecked: false
+              mem:
+                size: "0x0"
+                startAddr: "0x0"
+              noInit: false
+              tag: RAM
+            - id: 1
+              isChecked: true
+              mem:
+                size: "0x5000"
+                startAddr: "0x20000000"
+              noInit: false
+              tag: IRAM
+            - id: 2
+              isChecked: false
+              mem:
+                size: "0x0"
+                startAddr: "0x0"
+              noInit: false
+              tag: IRAM
+          ROM:
+            - id: 1
+              isChecked: false
+              isStartup: false
+              mem:
+                size: "0x0"
+                startAddr: "0x0"
+              tag: ROM
+            - id: 2
+              isChecked: false
+              isStartup: false
+              mem:
+                size: "0x0"
+                startAddr: "0x0"
+              tag: ROM
+            - id: 3
+              isChecked: false
+              isStartup: false
+              mem:
+                size: "0x0"
+                startAddr: "0x0"
+              tag: ROM
+            - id: 1
+              isChecked: true
+              isStartup: true
+              mem:
+                size: "0x10000"
+                startAddr: "0x8000000"
+              tag: IROM
+            - id: 2
+              isChecked: false
+              isStartup: false
+              mem:
+                size: "0x0"
+                startAddr: "0x0"
+              tag: IROM
+        useCustomScatterFile: false
+    uploadConfigMap:
+      JLink:
+        baseAddr: ""
+        bin: ""
+        cpuInfo:
+          cpuName: "null"
+          vendor: "null"
+        otherCmds: ""
+        proType: 1
+        speed: 8000
+      STLink:
+        address: "0x8000000"
+        bin: ""
+        elFile: None
+        optionBytes: .eide/target 1.st.option.bytes.ini
+        otherCmds: ""
+        proType: SWD
+        resetMode: default
+        runAfterProgram: true
+        speed: 4000
+    uploader: STLink
