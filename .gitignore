@@ -8,8 +8,19 @@
 /build
 /bin
 /obj
+/Objects
+/Listings
+/DebugConfig
 /out
 
 # eide template
 *.ept
 *.eide-template
+
+#user-specific files
+*.uvguix*
+*.uvoptx
+
+##pack cache(reinstallable)
+/.pack/
+/.cmsis/
