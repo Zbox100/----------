@@ -1,5 +1,5 @@
 version: "4.1"
-name: Target02
+name: Target03
 type: ARM
 deviceName: null
 packDir: .pack/Keil/STM32F1xx_DFP.2.4.1

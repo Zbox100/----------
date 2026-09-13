@@ -1,0 +1,18 @@
+{
+	"folders": [
+		{
+			"path": "."
+		}
+	],
+	"settings": {
+		"clangd.enable": true,
+		"clangd.onConfigChanged": "restart",
+		"clangd.checkUpdates": false,
+		"clangd.detectExtensionConflicts": true,
+		"clangd.arguments": [
+			"--background-index=false",
+			"--compile-commands-dir=e:/vibe_coding_code/cursor_code/edge_ai_voice/build/clangd",
+			"--query-driver=C:/Espressif/tools/xtensa-esp-elf/**/bin/xtensa-*-elf-gcc.exe"
+		]
+	}
+}
