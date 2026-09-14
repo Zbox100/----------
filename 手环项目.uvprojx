@@ -965,6 +965,16 @@
             </File>
           </Files>
         </Group>
+        <Group>
+          <GroupName>Docs</GroupName>
+          <Files>
+            <File>
+              <FileName>notes_rtos.md</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\Docs\notes_rtos.md</FilePath>
+            </File>
+          </Files>
+        </Group>
       </Groups>
     </Target>
   </Targets>

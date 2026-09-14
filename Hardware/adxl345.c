@@ -3,8 +3,6 @@
 #include "adxl345.h"
 /*部分引用自b站up：刀斩风华
 https://www.bilibili.com/video/BV1UA411q7bw/?spm_id_from=333.337.search-card.all.click&vd_source=ae7e10257b47cf52dd0f8191f32a0d8b
-
-
 */
 #define SDA_RCC		  	RCC_APB2Periph_GPIOA
 #define SDA_GPIO		  GPIOA
