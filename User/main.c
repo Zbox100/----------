@@ -1,18 +1,18 @@
-#include "stm32f10x.h"                // Device header
-#include "stm32f10x_it.h"
-#include "string.h"
-#include "Delay.h"
-#include "Oled.h"
-#include "usart.h"
-#include "MyRTC.h"
-#include "Key.h"
-#include "head.h"
-#include "adxl345.h"
-#include "DHT11.h"
-#include "max30102.h"
-#include "algorithm.h"
-#include "xiic.h"
-#include "blood.h"
+#include "stm32f10x.h"                // STM32F103系列芯片的标准外设库核心头文件
+#include "stm32f10x_it.h"             // STM32F103系列芯片的中断服务函数定义头文件
+#include "string.h"                   // C语言标准库字符串操作头文件
+#include "Delay.h"                    // 自定义延时函数模块头文件
+#include "Oled.h"                     // OLED显示屏驱动模块头文件
+#include "usart.h"                    // 自定义串口通信（USART）模块头文件
+#include "MyRTC.h"                    // 自定义实时时钟（RTC）驱动封装模块头文件
+#include "Key.h"                      // 自定义按键输入驱动模块头文件
+#include "head.h"                     // 自定义公共全局头文件（封装通用定义与宏）
+#include "adxl345.h"                  // ADXL345三轴加速度传感器驱动模块头文件
+#include "DHT11.h"                    // DHT11温湿度传感器驱动模块头文件
+#include "max30102.h"                 // MAX30102心率血氧光电传感器驱动模块头文件
+#include "algorithm.h"                // 传感器数据处理算法（如心率、血氧计算）模块头文件
+#include "xiic.h"                     // 自定义软件I2C通信模块头文件
+#include "blood.h"                    // 血氧心率（生理参数）数据结构与处理模块头文件
 
 //全局变量
 int rxBuffer;
@@ -20,15 +20,17 @@ int global_var = 0;
 uint8_t Flag_U;
 uint16_t data;
 
-//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// FreeRTOS核心头文件：提供FreeRTOS基础类型、宏定义与调度器核心支撑接口
 #include "FreeRTOS.h"
+// FreeRTOS任务管理头文件：包含任务创建、挂起、恢复、删除等任务控制相关接口
 #include "task.h"
+// FreeRTOS队列管理头文件：包含队列创建、数据发送/接收等任务间通信相关接口
 #include "queue.h"
 /////////////////////全局变量//////////////////////////////////
 uint16_t KeyExit_R = 0; 
 uint8_t IN = 0;
 extern BloodData g_blooddata;
-/////////////////////单一功能任务//////////////////////////////
+/////////////////////专用功能任务//////////////////////////////
 TaskHandle_t Time_Work_fHandler;
 TaskHandle_t Time_Show_fHandler;
 
@@ -58,15 +60,15 @@ void Adxl345_Work_f(void*arg)
 {	
 
         volatile uint32_t time = 0;                     // ms计时变量 
-        uint32_t Normal_num=0;
-        unsigned char ReadAdxl345;	                    //读取adxl345数据
-        unsigned int Number_of_detections = 0;			//正常次数;检测次数
-        unsigned char Flag = 0;                         //碰撞检测
-        float buf = 0;	
+        uint32_t Normal_num=0;                          //正常次数
+        unsigned char ReadAdxl345 = 0;	                    //读取adxl345数据
+        unsigned int Number_of_detections = 0;			//检测次数
+        unsigned char Flag = 0;                         //碰撞检测标志
+        float buf = 0;                                 //缓冲区
    	
 	while(1)
 	{
-        		if(time==720000)
+        if(time==720000)
 		{
 			time=0;
 			ReadAdxl345=1;
@@ -80,7 +82,6 @@ void Adxl345_Work_f(void*arg)
 		{
 				ReadAdxl345= 0; 
                 ReadData_x();  						                            //三轴检测函数
-                
 				buf = temp_Z - buf;
 				if(Number_of_detections&&(buf >25)){Normal_num++;}              //正常次数++
 				else Number_of_detections++;
@@ -97,7 +98,6 @@ void Adxl345_Work_f(void*arg)
     }   
 }
 }
-
 
 void Adxl345_Show_f( void * arg )
 {
@@ -124,7 +124,6 @@ void Adxl345_Show_f( void * arg )
         vTaskDelay(100);
     }
 }
-     
      
 void Time_Work_f( void * arg ) //时间读取任务
 {
@@ -404,7 +403,6 @@ void beep_Work_f(void* arg)
 		
     }    															
 }
-
 
 void Start_MyTaskList(void *arg)  //任务启动任务
 {
