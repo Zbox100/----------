@@ -70,6 +70,12 @@
 - 问题：主机拉低后用毫秒级硬延时阻塞，期间不参与调度
 - 后果：每轮通讯至少 18ms 纯阻塞等待，放大 CPU 占用与周期抖动
 - 修复：RTOS 下改用`vTaskDelay` 让出 CPU，或在专用任务中等待
+
+15. `UsartPrintf` 栈占用大 + 发送忙等
+- 位置： usart.c L109（局部缓冲）、L120（发送忙等）
+- 问题：`unsigned char UsartPrintfBuf[256]` 是局部变量，每次调用吃 256B 栈；逐字节发送用`while(USART_GetFlagStatus(TC)==RESET)` 忙等自旋
+- 后果：在 512B（128word）栈的任务里调用即占一半栈，叠加`vsnprintf`内部开销，是"栈不足"最大单点来源（呼应堆栈水位方案）；115200 波特率下约 87μs/字节阻塞，长文本耗 CPU 数 ms，不释放调度
+- 修复：缩短打印文本；避免 %f（改整数输出）；长文本改用发送缓冲/中断 DMA；调用侧确认任务栈余量（monitor 实测）
 #### 发现P1问题记录（偶发设计缺陷）
 1. `720000/72M = 10ms` 的前提是"1 次循环 = 1 个 CPU 周期"，这不可能成立，误把一次循环当作一次始终周期，存在设计缺陷。
 2. 类似以上问题，是逻辑代码粗硬移植到RTOS中导致的设计缺陷。
@@ -157,5 +163,32 @@
 - 修复：接收变量改成`uint32_t dis_buf_R;`
 
 
-#### 修改记录
+#### 优化方向记录（未实施，仅记录思路）
+> 对应 P2-9，暂不写码，先记大纲
+1. 统一 IIC 驱动（三层分离）
+- LL 层：软 IIC / 硬件 I2C 字节原语，总线引脚用结构体参数化（不写死 GPIO）
+- 协议层：`I2C_WriteReg/ReadReg/ReadMulti` 自动拼 7 位地址+R/W 位、处理 ACK
+- 设备层：adxl345.c / Max30102.c / Oled.c 只留寄存器+数据换算，删各自内联位带
+- 地址统一传 7 位（MAX30102=0x57、ADXL345=0x53、OLED=0x3C）
+2. 回调函数优化
+- 事务完成/错误回调 + RTOS 二进制信号量（发起即返回，不忙等；超时可选）
+- 上电设备探测回调（按已知地址表发地址问 ACK，无则置故障标志）
+- 硬 I2C 可中断化；软 IIC 保留时序但补"超时 + taskYIELD"
+- 落地建议：先做第一步（统一驱动，纯重构低风险）；回调/中断化第二步再做
+3. FreeRTOS 堆栈水位（High Water Mark）监测与优化
+- 目标：用 `uxTaskGetStackHighWaterMark()` 监测 12 个任务栈使用，识别不足/过度分配并优化（未来实施，先记钩子）
+- 前置开关（FreeRTOSConfig.h）：`INCLUDE_uxTaskGetStackHighWaterMark=1`、`configCHECK_FOR_STACK_OVERFLOW=2`、`configUSE_MALLOC_FAILED_HOOK=1`（当前均为 0/注释）
+- 做法：新建低优先级常驻 `StackMonitor_f` 任务，5s 周期逐个打印各任务 `minFree`（返回值×4=字节，从外部任务调用更准）及 `xPortGetFreeHeapSize()`
+- 现状关键数据：12 任务栈合计 1792word=7168B，堆仅 10KB，余量极小；风险任务 Max30102_Work/DTH11_Work（UsartPrintf %f 浮点）、Time_Work（localtime 库）
+- 优化方向：栈按"实测峰值+40~64word"调整；printf 去 %f 改整数输出；优先级分级（重 Work=5、其余 Work=4、Show=3）；堆提至 16KB
+- 验证标准：溢出钩子 0 触发、全部任务 minFree≥64word、堆余量≥2KB
+- 详见会话记录，未来实施时按"开关→监测→分析→调整→复测"闭环执行
+4. 空闲任务（Idle Task）利用
+- 现状：空闲任务必存在（FreeRTOS 强制创建，优先级 0），但当前 `configUSE_IDLE_HOOK=0`，未实现 `vApplicationIdleHook()`，CPU 空闲时纯空转烧电
+- 附带注意：`configUSE_PREEMPTION=0`（非抢占/协作式），所有功能任务同优先级 4，靠阻塞/让出切换，空闲任务机会较多
+- 可用途：① 省电（idle 里 `__WFI()`/停机，对电池供电手环最关键，电流可几十mA→几mA）；② CPU 负载统计（idle 计数器->空闲占比）；③ 看门狗喂狗兜底；④ 低优先级后台清理
+- 约束：idle hook 内禁调任何阻塞/挂起/删除任务的 API，只放非阻塞短操作
+- 开启方式：FreeRTOSConfig.h `configUSE_IDLE_HOOK=1`，实现 `void vApplicationIdleHook(void)`
+
+### 修改记录
 1. P3-1已修改（修改为“专用任务”）。
