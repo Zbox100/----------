@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>手环项目 · 盘点日核对表</title>
+<style>
+  :root{
+    --bg:#f6f7f9; --panel:#ffffff; --line:#e3e6ea; --text:#1f2328; --dim:#5b6570;
+    --red:#c0392b; --amber:#b7791f; --green:#1a7f4b; --blue:#1f5fa8; --chip:#eef1f4;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;padding:28px 20px 64px;background:var(--bg);color:var(--text);
+       font:14px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif}
+  .wrap{max-width:1120px;margin:0 auto}
+  h1{font-size:22px;margin:0 0 6px}
+  .sub{color:var(--dim);font-size:13px;margin-bottom:22px}
+  h2{font-size:16px;margin:30px 0 10px;padding-bottom:7px;border-bottom:2px solid var(--line)}
+  h3{font-size:14px;margin:20px 0 8px;color:var(--blue)}
+  table{width:100%;border-collapse:collapse;background:var(--panel);font-size:13px;
+        border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  th{background:var(--chip);text-align:left;padding:8px 10px;font-weight:600;border-bottom:1px solid var(--line);white-space:nowrap}
+  td{padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  tr:last-child td{border-bottom:none}
+  tr:hover td{background:#fafbfc}
+  code{background:var(--chip);padding:1px 5px;border-radius:4px;font-size:12px;
+       font-family:Consolas,Monaco,monospace}
+  .bad{color:var(--red);font-weight:600}
+  .warn{color:var(--amber);font-weight:600}
+  .ok{color:var(--green);font-weight:600}
+  .tag{display:inline-block;padding:1px 7px;border-radius:10px;font-size:11px;font-weight:600}
+  .t-p0{background:#fde8e6;color:var(--red)}
+  .t-p1{background:#fdf3e3;color:var(--amber)}
+  .t-p2{background:#e8f0fa;color:var(--blue)}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px 16px;margin:12px 0}
+  .key{background:#fff8e6;border-left:4px solid var(--amber);border-radius:6px;padding:12px 16px;margin:14px 0}
+  .key b{color:var(--amber)}
+  ul{margin:6px 0 0;padding-left:20px}
+  li{margin:3px 0}
+  .mermaid{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:18px;margin:12px 0;overflow-x:auto}
+  .note{color:var(--dim);font-size:12px;margin-top:6px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>手环项目 · 盘点日核对表</h1>
+<div class="sub">生成 2026-09-27 ｜ 数据源：<code>User/</code> <code>Hardware/</code> <code>System/</code> 源码实读 ｜ 配套文件：<code>Docs/architecture_draft.md</code>、<code>Docs/buglist_dedup.md</code></div>
+
+<div class="key">
+<b>★ 先回答那个基数问题：</b>「33 条」= <b>去重后</b>的有效条目数。<br>
+原笔记 <code>notes_rtos.md</code> 实为 <b>37 条</b>（P3×5 + P2×15 + P1×14 + P0×3），其中 <b>4 组逐字重复</b> → 去重后 <b>37 − 4 = 33</b>。<br>
+另：该文件 <b>最后改动是 09-22</b>（git 记录），09-26 的核对并未写回文件。
+</div>
+
+<h2>一、任务清单（main.c L410-421 ＋ L462）</h2>
+<table>
+<thead><tr><th>#</th><th>任务名</th><th>栈(word)</th><th>优先级</th><th>启动后状态</th><th>创建行</th></tr></thead>
+<tbody>
+<tr><td>—</td><td><code>Start_MyTaskList</code></td><td>128</td><td>2</td><td>建完自删</td><td>L462</td></tr>
+<tr><td>1</td><td><code>Time_Work_f</code></td><td>128</td><td>4</td><td>运行</td><td>L410</td></tr>
+<tr><td>2</td><td><code>Time_Show_f</code></td><td>128</td><td>4</td><td class="warn">挂起</td><td>L411</td></tr>
+<tr><td>3</td><td><code>Adxl345_Work_f</code></td><td>128</td><td>4</td><td>运行</td><td>L412</td></tr>
+<tr><td>4</td><td><code>Adxl345_Show_f</code></td><td>128</td><td>4</td><td class="warn">挂起</td><td>L413</td></tr>
+<tr><td>5</td><td><code>DTH11_Work_f</code></td><td>224</td><td>4</td><td>运行</td><td>L414</td></tr>
+<tr><td>6</td><td><code>DTH11_Show_f</code></td><td>224</td><td>4</td><td class="warn">挂起</td><td>L415</td></tr>
+<tr><td>7</td><td><code>Max30102_Work_f</code></td><td>224</td><td>4</td><td>运行</td><td>L416</td></tr>
+<tr><td>8</td><td><code>Max30102_Show_f</code></td><td>224</td><td>4</td><td class="warn">挂起</td><td>L417</td></tr>
+<tr><td>9</td><td><code>Menu_handling_f</code></td><td>128</td><td>4</td><td>运行</td><td>L419</td></tr>
+<tr><td>10</td><td><code>Key_GetNum_f</code></td><td>128</td><td>4</td><td>运行</td><td>L420</td></tr>
+<tr><td>11</td><td><code>beep_Work_f</code></td><td>128</td><td>4</td><td class="warn">挂起</td><td>L421</td></tr>
+<tr><td>12</td><td><code>Idle</code>（内核）</td><td>configMINIMAL_STACK_SIZE</td><td>0</td><td>运行</td><td>内核</td></tr>
+</tbody>
+</table>
+<div class="note">栈合计 12 任务 <b>1792 word = 7168 B</b>（含 Start）｜ 优先级只有一层（全 4）→ 对应 D1 ｜ 5 个任务在 L424-428 被挂起</div>
+
+<h2>二、队列清单（main.c L455-460）</h2>
+<table>
+<thead><tr><th>#</th><th>队列</th><th>长度</th><th>项大小</th><th>生产者（文件:行）</th><th>消费者（文件:行）</th><th>项大小对吗</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>QueueGetHandler</code></td><td>6</td><td>12B</td><td><code>MyRTC.c:222</code></td><td><code>main.c:164</code></td><td class="ok">✅</td></tr>
+<tr><td>2</td><td><code>KeyGetHandler</code></td><td>1</td><td>1B</td><td><code>main.c:383</code></td><td><code>main.c:285</code></td><td class="ok">✅</td></tr>
+<tr><td>3</td><td><code>KeyExitHandler</code></td><td>1</td><td>1B</td><td class="bad">it.c:184（ISR）</td><td><code>main.c:107/154/193/244</code> ×4</td><td class="warn">⚠️ 消费者用 FromISR 读</td></tr>
+<tr><td>4</td><td><code>ADX1345Handler</code></td><td>1</td><td>4B</td><td><code>main.c:89</code></td><td><code>main.c:119</code>（收 1B）</td><td class="bad">❌ P0-3</td></tr>
+<tr><td>5</td><td><code>DTH11Handler</code></td><td>1</td><td class="bad">4B</td><td><code>DHT11.c:166</code>（发 5B）</td><td><code>main.c:205</code></td><td class="bad">❌ P0-1</td></tr>
+<tr><td>6</td><td><code>Max30102Handler</code></td><td>1</td><td class="bad">4B</td><td><code>blood.c:175</code>（发 8B）</td><td><code>main.c:255</code></td><td class="bad">❌ P0-2</td></tr>
+</tbody>
+</table>
+
+<h2>三、图 1 · 分层依赖图</h2>
+<div class="mermaid">
+flowchart TB
+    subgraph L1["L1 应用层"]
+        A["main.c<br/>12 任务 + 6 队列"]
+        B["stm32f10x_it.c<br/>EXTI9_5 / SysTick"]
+    end
+    subgraph L2["L2 系统服务"]
+        C1["MyRTC.c"]
+        C2["usart.c"]
+        C3["Delay.c"]
+    end
+    subgraph L3["L3 设备驱动"]
+        D1["Oled.c"]
+        D3["adxl345.c"]
+        D4["DHT11.c"]
+        D5["Max30102.c"]
+        D6["blood.c / algorithm.c"]
+    end
+    subgraph L4["L4 总线/底层"]
+        E1["xiic.c (PA11/12)"]
+        E2["位带软 IIC<br/>Oled(PB8/9)+adxl345(PA4/5)"]
+        E3["sys.c / 寄存器"]
+    end
+    subgraph L5["L5 RTOS 内核"]
+        F1["FreeRTOS heap_4"]
+        F2["SysTick / PendSV / SVC"]
+    end
+    subgraph L6["L6 启动/库"]
+        G1["startup_stm32f10x_hd.s"]
+        G3["标准外设库"]
+    end
+    A --> L2
+    A --> L3
+    A --> F1
+    B --> F2
+    B --> D1
+    C1 --> D5
+    C2 --> D5
+    C3 --> D3
+    C3 --> D4
+    D1 --> E2
+    D3 --> E2
+    D4 --> E3
+    D5 --> E1
+    D6 --> D5
+    L3 --> G3
+    G1 --> A
+</div>
+
+<h2>四、图 2 · 数据流图（任务 / 队列 / 中断）</h2>
+<div class="mermaid">
+flowchart LR
+    I1["EXTI9_5_IRQHandler<br/>it.c:177"]
+    P1["Time_Work_f<br/>main.c:128"]
+    P2["Adxl345_Work_f<br/>main.c:59"]
+    P3["DTH11_Work_f<br/>main.c:176"]
+    P4["Max30102_Work_f<br/>main.c:220"]
+    P5["Key_GetNum_f<br/>main.c:376"]
+    Q1["QueueGetHandler<br/>len=6 项=12B"]
+    Q2["KeyGetHandler<br/>len=1 项=1B"]
+    Q3["KeyExitHandler<br/>len=1 项=1B"]
+    Q4["ADX1345Handler<br/>len=1 项=4B"]
+    Q5["DTH11Handler<br/>len=1 项=4B ⚠️"]
+    Q6["Max30102Handler<br/>len=1 项=4B ⚠️"]
+    C0["Menu_handling_f<br/>main.c:268"]
+    C1["Time_Show_f<br/>main.c:138"]
+    C2["Adxl345_Show_f<br/>main.c:102"]
+    C3["DTH11_Show_f<br/>main.c:187"]
+    C4["Max30102_Show_f<br/>main.c:240"]
+    P1 -->|"MyRTC.c:222 发12B"| Q1
+    P5 -->|"main.c:383 发1B"| Q2
+    I1 -->|"it.c:184 FromISR 1B"| Q3
+    P2 -->|"main.c:89 发4B"| Q4
+    P3 -->|"DHT11.c:166 发5B"| Q5
+    P4 -->|"blood.c:175 发8B"| Q6
+    Q1 -->|"main.c:164 收12B"| C1
+    Q2 -->|"main.c:285 收1B"| C0
+    Q3 -->|"main.c:107/154/193/244"| C1
+    Q3 --> C2
+    Q3 --> C3
+    Q3 --> C4
+    Q4 -->|"main.c:119 收1B ⚠️"| C2
+    Q5 -->|"main.c:205 收5B"| C3
+    Q6 -->|"main.c:255 收8B"| C4
+</div>
+
+<h2>五、本次补漏（原笔记未记录 · 只记录不修）</h2>
+<table>
+<thead><tr><th>编号</th><th>级别</th><th>位置</th><th>问题</th></tr></thead>
+<tbody>
+<tr><td>B-1</td><td><span class="tag t-p1">P1</span></td><td><code>stm32f10x_it.c:177-189</code></td><td>ISR 里做 OLED 重活（软 IIC 逐字节阻塞）；<code>ClearITPendingBit</code> 放最后</td></tr>
+<tr><td>B-2</td><td><span class="tag t-p0">P0</span></td><td><code>Key.c:74</code> ＋ <code>it.c:184</code></td><td><b>抢占优先级 0 却调 FromISR API</b>（FreeRTOS 禁区 0~4）→ 队列链表并发破坏 = <b>B2 竞态</b></td></tr>
+<tr><td>B-3</td><td><span class="tag t-p2">P2</span></td><td><code>Key.c:89-110</code></td><td><code>Key_GetNum()</code> 自旋等按键松手，无 yield/超时 → 死占 CPU</td></tr>
+<tr><td>B-4</td><td><span class="tag t-p2">P2</span></td><td><code>main.c</code> 7 处</td><td><code>OLED_Clear()</code> 每轮循环调用，全屏刷是毫秒级阻塞</td></tr>
+<tr><td>B-5</td><td><span class="tag t-p2">P2</span></td><td><code>main.c:62,71</code></td><td>P1-1 的加重版：循环体含 4 次 I2C，实际周期可达数十秒</td></tr>
+</tbody>
+</table>
+
+<h2>六、去重（4 组逐字重复）</h2>
+<table>
+<thead><tr><th>组</th><th>重复项</th><th>内容</th><th>建议</th></tr></thead>
+<tbody>
+<tr><td>A1</td><td><code>P2-5 = P2-9</code></td><td>Z 轴脏数据未过滤</td><td>留 P2-9</td></tr>
+<tr><td>A2</td><td><code>P2-6 = P2-10</code></td><td>计步算法粗糙</td><td>留 P2-10</td></tr>
+<tr><td>A3</td><td><code>P2-7 = P2-11</code></td><td>队列满静默丢步</td><td>留 P2-11</td></tr>
+<tr><td>A4</td><td><code>P1-4 = P0-3</code></td><td>ADX1345Handler 接收端类型不匹配</td><td>留 P0-3</td></tr>
+</tbody>
+</table>
+
+<h2>七、汇总</h2>
+<table>
+<thead><tr><th>类别</th><th>数</th></tr></thead>
+<tbody>
+<tr><td>原笔记条目</td><td>37</td></tr>
+<tr><td>去重后有效</td><td><b>33</b> ← 与「33 条」口径一致</td></tr>
+<tr><td>本次补漏</td><td><b>5</b></td></tr>
+<tr><td>优化方向（不计 bug）</td><td>4</td></tr>
+<tr><td><b>盘点后 bug 总条目</b></td><td><b>38</b></td></tr>
+</tbody>
+</table>
+<div class="note">修复优先级建议：<b>B-2（P0 竞态）→ B-1（P1 中断重活）→ 原 P0-1/P0-2（堆破坏）</b></div>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script>
+  mermaid.initialize({startOnLoad:true, theme:'neutral', flowchart:{useMaxWidth:true}});
+</script>
+</div>
+</body>
+</html>

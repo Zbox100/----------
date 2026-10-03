@@ -76,6 +76,19 @@
 - 问题：`unsigned char UsartPrintfBuf[256]` 是局部变量，每次调用吃 256B 栈；逐字节发送用`while(USART_GetFlagStatus(TC)==RESET)` 忙等自旋
 - 后果：在 512B（128word）栈的任务里调用即占一半栈，叠加`vsnprintf`内部开销，是"栈不足"最大单点来源（呼应堆栈水位方案）；115200 波特率下约 87μs/字节阻塞，长文本耗 CPU 数 ms，不释放调度
 - 修复：缩短打印文本；避免 %f（改整数输出）；长文本改用发送缓冲/中断 DMA；调用侧确认任务栈余量（monitor 实测）
+
+16. `OLED_Clear()` 在多个任务循环里高频调用，单次即毫秒级阻塞（09-27 盘点日新增）
+- 位置： main.c L114 / L118 / L159 / L204 / L249 / L256 / L365 等 7 处
+- 问题：每个 Show 任务与菜单任务的 while 循环里每轮都调用 `OLED_Clear()`，而 OLED 全屏清屏底层是软件 IIC 逐字节写显存（约 1KB × 每字节 9 个时钟 + Delay 阻塞）
+- 后果：单次 `OLED_Clear()` 属毫秒级阻塞，4 个 Show 任务虽然分时运行但都压在软件 IIC 这一条总线上，叠加放大整体周期抖动。属性能观察类问题，与 P2-12（三套软 IIC 重复实现）叠加
+- 修复：改为局部刷新（只重写变化区域）；或将清屏与显示合并到一次连续写
+
+17. `Adxl345_Work_f` 的"软件定时器"实际周期远大于设计值（P1-1 加重版，09-27 盘点日新增）
+- 位置： main.c L62（`volatile uint32_t time = 0`）、L71（`if(time==720000)`）
+- 问题：P1-1 已指出"1 次循环 ≠ 1 个 CPU 周期"这个前提不成立，此处补充量化：`Adxl345_Work_f` 的循环体包含 4 次 I2C 读取 + 1 次队列发送（L84-89），单次迭代耗时远超 1 个周期
+- 后果：实际检测周期 ≈ `720000 × 单次迭代耗时 + 100ms`，可能达到数十秒量级，比 P1-1 描述的"轻微漂移"严重得多；计步"10ms 检测周期"的设计前提完全失效
+- 修复：改用 `vTaskDelayUntil` 做精确周期唤醒，删掉 `time` 计数变量
+
 #### 发现P1问题记录（偶发设计缺陷）
 1. `720000/72M = 10ms` 的前提是"1 次循环 = 1 个 CPU 周期"，这不可能成立，误把一次循环当作一次始终周期，存在设计缺陷。
 2. 类似以上问题，是逻辑代码粗硬移植到RTOS中导致的设计缺陷。
@@ -144,6 +157,13 @@
 - 问题：幅值计算处写了两行都对 `s1[i].real` 赋值（第二行 `s1[i].real=sqrtf(s2[i].real*s2[i].real+s2[i].imag*s2[i].imag)` 把第一行 RED 幅值覆盖），`s1` 里最终存的是 IR 通道频谱而非 RED
 - 后果：`find_max_num_index(s1,30)`（L148）找 RED 主频时实际用 IR 数据，心率（L152）与血氧（L156-158）计算基于被污染通道数据，结果失真；RED 幅值还白算一次`sqrtf`
 - 修复：第二行改为写 `s2[i].real`：`s2[i].real = sqrtf(s2[i].real*s2[i].real + s2[i].imag*s2[i].imag);`
+
+15. `Key_GetNum()` 阻塞式等按键松手，任务期间死占 CPU（09-27 盘点日新增）
+- 位置： Key.c L89-110
+- 问题：`Key_GetNum()` 内部用 `while (GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_13) == 1);` 这类裸自旋等待按键松开，无 `taskYIELD()`、无超时保护
+- 后果：`Key_GetNum_f` 任务在按键按住期间完全不参与调度，按压多久就阻塞多久，同优先级（均为 4）任务被挤压。与 P2-13（DHT11 忙等）、P1-9（Max30102 忙等）同属"忙等不释放 CPU"一族，这是本项目第 4 处
+- 修复：改用 EXTI 中断触发 + 队列通知；或轮询处加 `taskYIELD()` 并设置超时退出
+
 #### 发现P0问题记录（致命错误）
 1. DTH11Handler 队列项大小写成了指针大小
 - 位置： main.c L460
@@ -162,6 +182,17 @@
 - 后果：破坏`Adxl345_Show_f` 栈上相邻数据，可能显示错乱或随机死机（触发条件是进入计步界面）
 - 修复：接收变量改成`uint32_t dis_buf_R;`
 
+4. EXTI8 中断抢占优先级设为 0，却在 ISR 里调用 `FromISR` API（09-27 盘点日新增）
+- 位置： Key.c L74（`NVIC_IRQChannelPreemptionPriority = 0x00`）+ stm32f10x_it.c L184（`xQueueSendFromISR`）
+- 问题：`EXTI8_Config()` 把 EXTI9_5 的抢占优先级设为 0；而 FreeRTOSConfig.h L289 规定 `configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY = 5`，优先级数值 0~4 的中断禁止调用任何 `FromISR` API。当前设 0，正好落在禁区
+- 后果：`xQueueSendFromISR` 内部进入临界区时会抬高 `BASEPRI` 试图屏蔽低优先级中断，但自身优先级更高（数值 0）屏蔽不住 → 中断里对队列链表的插入操作与任务侧并发访问重叠，队列内部链表被破坏，表现为偶发死机。这就是此前一直没定性的"B2 竞态"成因
+- 修复：`NVIC_IRQChannelPreemptionPriority` 改为 ≥ 5（例如 `configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY`）
+
+5. EXTI8 的 ISR 里做 OLED 重活 + 清 pending 顺序错误（09-27 盘点日新增）
+- 位置： stm32f10x_it.c L177-189（`EXTI9_5_IRQHandler`）
+- 问题：ISR 内直接调用 `OLED_Clear()` 与 `OLED_ShowString()`——两者底层都是软件 IIC 位带翻转、逐字节 Delay 阻塞的重活；且 `EXTI_ClearITPendingBit(EXTI_Line8)` 写在最后一行，若前面 OLED 操作耗时长于按键抖动间隔，pending 位可能叠加或漏清
+- 后果：中断响应时间被拉到毫秒级，期间同/低优先级中断全部被压住；配合第 4 条（抢占优先级 0）影响进一步放大
+- 修复：ISR 内只做"清 pending + 置标志/发队列"，界面刷新交给任务处理
 
 #### 优化方向记录（未实施，仅记录思路）
 > 对应 P2-9，暂不写码，先记大纲
@@ -192,3 +223,5 @@
 
 ### 修改记录
 1. P3-1已修改（修改为“专用任务”）。
+2. 09-27 盘点日补漏：新增 P2-16、P2-17、P1-15、P0-4、P0-5 共 5 条（来源：代码实读对照，只记录未修改）。
+3. 09-27 盘点日去重建议（未执行，仅记录）：P2-5=P2-9、P2-6=P2-10、P2-7=P2-11、P1-4=P0-3 共 4 组重复，去重后有效条目 33 条。
