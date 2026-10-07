@@ -408,6 +408,11 @@
               <FileType>5</FileType>
               <FilePath>.\LIbrary\head.h</FilePath>
             </File>
+            <File>
+              <FileName>手环项目.uvoptx</FileName>
+              <FileType>9</FileType>
+              <FilePath>.\手环项目.uvoptx</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>
@@ -982,6 +987,16 @@
               <FileName>notes_rtos.md</FileName>
               <FileType>5</FileType>
               <FilePath>.\Docs\notes_rtos.md</FilePath>
+            </File>
+            <File>
+              <FileName>architecture_draft.md</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\Docs\architecture_draft.md</FilePath>
+            </File>
+            <File>
+              <FileName>notes_baremetal.md</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\Docs\notes_baremetal.md</FilePath>
             </File>
           </Files>
         </Group>

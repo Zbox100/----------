@@ -32,24 +32,30 @@
 | 问题清单逐条说明                  | 主计划第八节                        | 每条问题的位置、说明、归属                      |
 | `Docs/notes_rtos.md`      | 本项目                           | RTOS 机制与 `main.c` 精读记录             |
 | `Docs/notes_baremetal.md` | 本项目                           | 裸机专题（启动 / NVIC / 时钟 / GPIO / EXTI） |
+| `Docs/map_guide.md`       | 本项目                           | map 文件速查（符号定位 / 容量核算 / 段名对照）       |
+| `Listings/手环项目.map`       | 本项目                           | 链接映射原始文件（Flash 53% / RAM 84%）      |
 | 项目源码                      | `User/` `Hardware/` `System/` | 一切结论的唯一来源                          |
 
 ***
 
 ## 1. 项目概览
 
-| 项             | 值      | 从哪取（★ 已实读核对）                                                                                                                                                                                                                                                                                                |
-| ------------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| MCU 型号 / 启动文件 | **待填** | ① 型号：`手环项目.uvprojx` 的 `<Device>` → **STM32F103C8**② 启动文件：同一文件里 `<FileName>` 中的 `.s` → **`startup_stm32f10x_md.s`**⚠️ **别写** **`hd.s`**，见下方"填写陷阱 1"                                                                                                                                                          |
-| RTOS 与配置要点    | **待填** | `FreeRTOS/FreeRTOSConfig.h`。**只写 4\~6 条要点**，全部已核对：`configUSE_PREEMPTION=0`（协作式！）／`configUSE_TIME_SLICING=1`／`configUSE_TIMERS=0`／`configUSE_IDLE_HOOK=0`／`configTOTAL_HEAP_SIZE=10KB`／`configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY=5`写法建议：`FreeRTOS v? / heap_4 / 抢占=0（协作） / 时片=1 / 堆=10KB / SysCall 门限=5` |
-| 业务代码规模        | **待填** | 只统计**你自己写的**：`User/`＋`Hardware/`＋`System/`（**不含** `LIbrary/` 标准库、`FreeRTOS/` 内核、`Start/`）取值方法（任选）：① Keil 编译后的 `.map` 文件里 `Total RO/RW Size`；② 数文件与行数。**建议填"文件数 / 总行数"两个数**，别只填一个                                                                                                                            |
-| 构建工具链         | **待填** | `手环项目.uvprojx`：Keil MDK（`<ToolsetNumber>`）＋ ARMCC；优化等级 `<Optim>` = **1**（即 -O1）写法建议：`Keil MDK / ARMCC v? / -O1`                                                                                                                                                                                             |
-| 顶层目录清单        | **待填** | 项目根 `ls` 结果里**排除** `.git` `.vscode` `build` `Objects` `Listings` 这类产物目录核心 6 个：`User/` `Hardware/` `System/` `Start/` `LIbrary/` `FreeRTOS/`（另有 `app/` `Docs/`）                                                                                                                                              |
+| 项             | 值                                                                                                                                                 | 从哪取（★ 已实读核对）                                                                                                                                                                                                                                                                                                |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| MCU 型号 / 启动文件 | Device:STM32F103C8\$Flash\STM32F10x\_128.FLM\*\*  \*\*<PathWithFileName>.\Start\startup\_stm32f10x\_md.s</PathWithFileName>                       | ① 型号：`手环项目.uvprojx` 的 `<Device>` → **STM32F103C8**② 启动文件：同一文件里 `<FileName>` 中的 `.s` → **`startup_stm32f10x_md.s`**⚠️ **别写** **`hd.s`**，见下方"填写陷阱 1"                                                                                                                                                          |
+| RTOS 与配置要点    | 1.使用协作式调度（时间片轮转）2.使能时间片调度3.不使用软件定时器。不使能空间任务钩子。设置最大堆栈尺寸为10kb，配置系统最高可管理优先级为5.                                                                       | `FreeRTOS/FreeRTOSConfig.h`。**只写 4\~6 条要点**，全部已核对：`configUSE_PREEMPTION=0`（协作式！）／`configUSE_TIME_SLICING=1`／`configUSE_TIMERS=0`／`configUSE_IDLE_HOOK=0`／`configTOTAL_HEAP_SIZE=10KB`／`configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY=5`写法建议：`FreeRTOS v? / heap_4 / 抢占=0（协作） / 时片=1 / 堆=10KB / SysCall 门限=5` |
+| 业务代码规模        | **整工程：33.86kB（Total RO = 34676B，map L3589）／三四十个文件；自研代码口径待按段统计**                                                                                   | ⚠️ **33.86kB 是"整工程"Total RO Size（含标准库/FreeRTOS 内核），不是"只统计自己写的"**。若只要自研（`User/`＋`Hardware/`＋`System/`），需按 .map 里各目标段累计——建议填"文件数 / 总行数"两个数。数值出处：`Listings/手环项目.map` L3589（Total RO 34676B）、L3590（Total RW 17312B）                                                                                             |
+| 构建工具链         | **Keil MDK / ARMCC V5.06 update 7 (build 960) / -O1**                                                                                             | `手环项目.uvprojx`：`<ToolsetNumber>`=0x4 → Keil MDK（L11）；`<pCCUsed>`=ARMCC V5.06u7（L13）；`<Optim>`=1 → -O1（L316）。写法建议：`Keil MDK / ARMCC V5.06u7 / -O1`                                                                                                                                                           |
+| 顶层目录清单        | **排除**`.git` `.vscode` `build` `Objects` `Listings` 这类产物目录核心 6 个：`User/` `Hardware/` `System/` `Start/` `LIbrary/` `FreeRTOS/`（另有 `app/` `Docs/`） | 项目根 `ls` 结果里**排除** `.git` `.vscode` `build` `Objects` `Listings` 这类产物目录核心 6 个：`User/` `Hardware/` `System/` `Start/` `LIbrary/` `FreeRTOS/`（另有 `app/` `Docs/`）                                                                                                                                              |
 
-**填写陷阱 1（★ 必看）**：工程实际编译的是 **`startup_stm32f10x_md.s`（307 行 / 向量表 59 项）**，
-而 `Docs/notes_baremetal.md` 里记的行号（L56-142 向量表、L147-155 Reset\_Handler、L151-152 调 SystemInit）
+<br />
+
+<br />
+
+**填写陷阱 1（★ 必看 · ✅ 2026-10-05 已闭环）**：工程实际编译的是 **`startup_stm32f10x_md.s`（307 行 / 向量表 59 项）**，
+而 `Docs/notes_baremetal.md` 早期记的行号（L56-142 向量表、L147-155 Reset\_Handler、L151-152 调 SystemInit）
 **全部是** **`hd.s`** **的行号（358 行 / 76 项）**。两个文件在 `Start/` 下并存，容易混。
-→ `md.s` 的真实行号见下方"附录 A"。**这件事要单独修** **`notes_baremetal.md`。**
+→ **`notes_baremetal.md`** **第 1 节行号已于 10-05 全部替换为** **`md.s`** **实测值**；依据见下方"附录 A"。
 
 **填写陷阱 2**：`configUSE_PREEMPTION = 0` 是**协作式**（非抢占）。这一条影响你对第 3、7 节的解释口吻，
 面试被问到时**主动说出来**是个加分点（"我这个工程其实跑的是协作式调度"）。
@@ -64,13 +70,18 @@
 
 | 层      | 目录     | 职责     | 文件清单   |
 | ------ | ------ | ------ | ------ |
-| **待填** | **待填** | **待填** | **待填** |
+| L1 应用 | `User/` | 主流程：初始化、12 个任务函数、中断服务函数 | `main.c`、`stm32f10x_it.c`（`stm32f10x_it.h` `stm32f10x_conf.h` 为配置头，可略） |
+| L2 系统服务 | `System/` | 与芯片外设强相关的服务：延时、RTC | `Delay.c`、`MyRTC.c`、`sys.c` |
+| L3 设备驱动 | `Hardware/` | 各外设驱动 + 算法 | `Oled.c` `Key.c` `adxl345.c` `DHT11.c` `Max30102.c` `blood.c` `algorithm.c` `usart.c` `xiic.c` `Led.c`（10 个 .c） |
+| L4 启动 | `Start/` | 启动文件、内核启动、系统时钟初始化 | `startup_stm32f10x_md.s`（实测编译项）、`system_stm32f10x.c`、`core_cm3.c` |
+| L5 RTOS | `FreeRTOS/` | 内核源码与配置 | `FreeRTOSConfig.h` ＋ `tasks.c` `queue.c` `list.c` `port.c` `heap_4.c` |
+| L6 库 | `LIbrary/` | STM32F10x 标准外设库（厂商代码，非自研） | 整目录，**写"标准外设库（厂商提供）"即可，不用列文件** |
 
 **逐行填写指引（照这个顺序抄，6 行）**
 
 | 建议的"层"  | 目录          | 职责怎么写                     | 文件清单                                                                                                   |
 | ------- | ----------- | ------------------------- | ------------------------------------------------------------------------------------------------------ |
-| L1 应用   | `User/`     | 主流程：初始化、12 个任务函数、中断服务函数   | `main.c`、`stm32f10x_it.c`、（`stm32f10x_it.h` `stm32f10x_conf.h` 算配置头，可略）                                |
+| L1 应用   | `User/`     | 主流程：初始化、12 个任务函数、中断服务函数   | `main.c`、`stm32f10x_it.c`、                                                                             |
 | L2 系统服务 | `System/`   | 与芯片外设强相关的服务：延时、RTC        | `Delay.c`、`MyRTC.c`、`sys.c`                                                                            |
 | L3 设备驱动 | `Hardware/` | 各外设驱动 + 算法                | `Oled.c` `Key.c` `adxl345.c` `DHT11.c` `Max30102.c` `blood.c` `algorithm.c` `usart.c` `xiic.c` `Led.c` |
 | L4 启动   | `Start/`    | 启动文件、内核启动、系统时钟初始化         | `startup_stm32f10x_md.s`、`system_stm32f10x.c`、`core_cm3.c`                                             |
@@ -91,12 +102,32 @@
 
 <!-- 逐行指引：12 行。前 4 列直接抄附录 B，第 5 列"职责"要你自己写（一句话） -->
 
-| #  | 任务名    | 栈（单位?） | 优先级    | 职责（★ 你来写） | 启动后初始状态 |
+| #  | 任务名    | 栈(word) | 优先级    | 职责（★ 你来写） | 启动后初始状态 |
 | -- | ------ | ------ | ------ | --------- | ------- |
-| 1  | <br /> | <br /> | <br /> | <br />    | <br />  |
-| 2  | <br /> | <br /> | <br /> | <br />    | <br />  |
-| …  | <br /> | <br /> | <br /> | <br />    | <br />  |
-| 12 | <br /> | <br /> | <br /> | <br />    | <br />  |
+| —  | `Start_MyTaskList` | 128 | 2 | 启动任务：创建其余 11 个任务后自删 | 建完自删 |
+| 1  | `Time_Work_f` | 128 | 4 | 周期读 RTC（1s）并写显示数据供队列 | 运行 |
+| 2  | `Time_Show_f` | 128 | 4 | 时间/日期页面渲染；支持时间修改 | **挂起** |
+| 3  | `Adxl345_Work_f` | 128 | 4 | 加速度采样 + 计步/跌倒检测，产步数投队列 | 运行 |
+| 4  | `Adxl345_Show_f` | 128 | 4 | 步数页面渲染 | **挂起** |
+| 5  | `DTH11_Work_f` | 224 | 4 | 温湿度采样（100ms 周期）并投队列 | 运行 |
+| 6  | `DTH11_Show_f` | 224 | 4 | 温湿度页面渲染 | **挂起** |
+| 7  | `Max30102_Work_f` | 224 | 4 | 血氧/心率 FIFO 采集（128 点）＋算法运算 | 运行 |
+| 8  | `Max30102_Show_f` | 224 | 4 | 血氧/心率页面渲染 | **挂起** |
+| 9  | `Menu_handling_f` | 128 | 4 | 菜单状态机：响应按键/蓝牙选择，调度各页面 | 运行 |
+| 10 | `Key_GetNum_f` | 128 | 4 | 按键扫描，产键值投队列 | 运行 |
+| 11 | `beep_Work_f` | 128 | 4 | 跌倒报警：串口/OLED/蜂鸣器翻转 | **挂起** |
+| 12 | `Idle`（内核） | `configMINIMAL_STACK_SIZE` | 0 | 空闲任务（内核自动创建） | 运行 |
+
+**自检问题（★ 用你自己的话回答，写在表下方）**
+
+1. **一共几个任务？创建它们的那个任务自己算不算？**
+   —— 用户代码创建 **12 个**（11 个业务任务 + `Start_MyTaskList`）；加上内核自动建的 **Idle** 共 13 个。口径：**算上 Start、算上 Idle**，共 13 个；若只算"业务任务"则 11 个。`configUSE_TIMERS=0` 所以**没有 Timer 任务**。
+2. **栈的单位是字还是字节？**
+   —— 单位是**字（word）**，1 word = 4 B。所以表里 128 实际是 **512 B**、224 实际是 **896 B**。栈合计（实测）：**12 个用户任务（含 Start）= 1920 word = 7680 B**；11 个业务任务（不含 Start）= **1792 word = 7168 B**（均不含内核 Idle）。
+3. **优先级分布如何？是否分层？（对照 D1）**
+   —— **全 4，只有一个层次**，只有 `Start` 是 2。业务任务全部同一优先级 → 依赖**时间片轮转**（`configUSE_TIME_SLICING=1`）；这也正是协作式调度下"谁都不抢占谁"的表现。对应问题代号 **D1**。
+4. **哪几个任务启动后立刻被挂起？为什么？**
+   —— **5 个**：4 个 Show（Time/Adxl345/DTH11/Max30102_Show）＋ `beep_Work_f`，在 `Start_MyTaskList` 末尾（L424-428）`vTaskSuspend`。为什么 → **省调度开销 / 由菜单按需唤醒**（平时不渲染，进对应页面才恢复）。
 
 **逐行填写指引**
 
@@ -139,10 +170,23 @@
 
 | # | 队列     | 长度     | 项大小    | 生产者（文件:行） | 消费者（文件:行） | 备注     |
 | - | ------ | ------ | ------ | --------- | --------- | ------ |
-| 1 | <br /> | <br /> | <br /> | <br />    | <br />    | <br /> |
-| 2 | <br /> | <br /> | <br /> | <br />    | <br />    | <br /> |
-| … | <br /> | <br /> | <br /> | <br />    | <br />    | <br /> |
-| 6 | <br /> | <br /> | <br /> | <br />    | <br />    | <br /> |
+| 1 | `QueueGetHandler` | 6 | 12B | `MyRTC.c:222`（Time_Work_f 周期投递） | `main.c:164`（Time_Show_f） | 项大小 = `uint16_t[6]`，收发一致；`len=6` 容纳一次完整时间数组（年/月/日/时/分/秒） |
+| 2 | `KeyGetHandler` | 1 | 1B | `main.c:383`（Key_GetNum_f） | `main.c:285`（Menu_handling_f） | `len=1` + 阻塞发送（`portMAX_DELAY`）成立的前提是**只有一个生产者**（无竞争） |
+| 3 | `KeyExitHandler` | 1 | 1B | **`stm32f10x_it.c:184`（EXTI9_5 ISR，跨中断）** | `main.c:107/154/193/244`（4 个 Show 任务） | ⚠️ **跨中断**：ISR 发、任务收；但 4 个接收全用了 `xQueueReceiveFromISR`（任务里用 FromISR 属 API 误用）；且 4 抢 1，只有 1 个能拿到 |
+| 4 | `ADX1345Handler` | 1 | 4B | `main.c:89`（发 `uint32_t Normal_num`） | `main.c:119`（收 1B `uint8_t`） | ⚠️ **发 `uint32_t` 收 `uint8_t` → P0-3 栈越界** |
+| 5 | `DTH11Handler` | 1 | 4B | `DHT11.c:166`（发 5B `DHT11_Data_TypeDef`） | `main.c:205`（收 5B 结构体） | ⚠️ 创建时项大小写成了 `sizeof(指针)`=4B，实际发 5B 结构体 → **P0-1 堆破坏** |
+| 6 | `Max30102Handler` | 1 | 4B | `blood.c:175`（发 8B `BloodData`） | `main.c:255`（收 8B） | ⚠️ 同上，项大小 4B 但发 8B → **P0-2 堆破坏** |
+
+**自检问题（★ 用你自己的话回答）**
+
+1. **每个队列的项大小与实际收发的数据类型对得上吗？**
+   —— **3 个对不上**：1、2、3 号对得上；**4、5、6 号对不上**（4 号发 4B 收 1B、5/6 号创建为指针大小 4B 却发 5B/8B 结构体）。这是**全项目最重的一类 bug**（P0 级）。
+2. **有没有跨中断的生产者？它的消费者在任务里还是中断里？**
+   —— **只有 `KeyExitHandler` 一个**，生产者来自 `EXTI9_5_IRQHandler`（中断）；消费者是 **4 个任务**（任务里收，**不该用 FromISR**）。
+3. **有没有多个消费者共用一个队列的情况？会有什么后果？**
+   —— **有，`KeyExitHandler` 有 4 个消费者任务**。后果：**谁先醒谁拿到，其余拿不到**（队列是"取走即消失"）；而且 4 个都用 `FromISR` 读，本身已是 API 误用。**这是 D2 的一个真实缺陷**。
+4. **队列长度设为 1 的理由是什么？**
+   —— 设计意图大概是"最新值覆盖 + 省 RAM"，但**代码实现是"满了就丢"而不是"覆盖"**（没有用 `xQueueOverwrite`）。这一问正好把 **P2-11（队列满静默丢步）** 引出来。
 
 **逐行填写指引**
 
@@ -312,9 +356,22 @@ flowchart LR
 
 | 序  | 调用     | 作用     |
 | -- | ------ | ------ |
-| 1  | <br /> | <br /> |
-| …  | <br /> | <br /> |
-| 14 | <br /> | <br /> |
+| 1  | `OLED_Init()` | 初始化 OLED 软件 IIC 引脚（PB8/PB9）与显示参数 |
+| 2  | `MyRTC_Init()` | 初始化 RTC 外设与时基 |
+| 3  | `Key_Init()` | 初始化按键 GPIO（PB13/14/15 下拉输入 + PB1/PB12 推挽输出 + AFIO 时钟） |
+| 4  | `Usart1_Init(115200)` | 初始化 USART1（PA9/PA10 复用），115200 波特，开 RX 中断 |
+| 5  | `EXTI8_Config()` | 配置 PA8 上升沿中断 + NVIC（EXTI9_5_IRQn） |
+| 6  | `Init_ADXL345()` | 初始化加速度计（走软 IIC PA11/12） |
+| 7  | `DHT11_GPIO_Config()` | 初始化温湿度单总线 GPIO（PA7） |
+| 8  | `IIC_GPIO_INIT()` | 初始化软 IIC 引脚（PA11/PA12，开漏输出）——MAX30102/ADXL345 共用总线 |
+| 9  | `MAX30102_GPIO()` | 初始化血氧模块 GPIO（PA6 INT 浮空输入） |
+| 10 | `Max30102_reset()` | 软复位 MAX30102 |
+| 11 | `MAX30102_Config()` | 配置 MAX30102 工作参数（FIFO/采样率/LED 电流） |
+| 12 | 6 × `xQueueCreate` | 建 6 条队列（L455-460） |
+| 13 | `xTaskCreate(Start_MyTaskList)` | 建启动任务（L462），由它再建其余 11 个任务 |
+| 14 | `vTaskStartScheduler()` | 启动调度器，不再返回（L465） |
+
+**顺序要点**：队列（序 12）**先于**任务（序 13）创建——因为调度器启动（序 14）后任务一跑就可能 `xQueueSend/Receive`，若句柄还是 NULL 就是操作空句柄 → 未定义行为。更严格的说法：关键是"队列必须在 `vTaskStartScheduler()` 之前建好"。另外第 8~11 行的因果链：`IIC_GPIO_INIT()`（软 IIC 引脚）排在 `MAX30102_GPIO()` 之前，因为 MAX30102 走的就是那条软 IIC 总线。
 
 **逐行填写指引**
 
@@ -345,6 +402,14 @@ flowchart LR
 - **写完后自查**：`taskENTER_CRITICAL()` / `taskEXIT_CRITICAL()` 包住了这些调用（L329-331）——**为什么需要包？**
   （提示：怕挂起动作被中断打断，导致"恢复了 A 却没挂起 B"的中间态。这是你自己的代码里罕见的**正确做法**，值得写进去）
 
+**✓ 已填写：**
+
+**切换机制 = 挂起/恢复（task 状态机），不是事件组/标志位。** 触发源有两个：蓝牙（`switch(rxBuffer)`，L288-321）和按键（`switch(operate)`，L327-350），两套逻辑做的都是同一件事：
+
+- **谁恢复谁**：`Menu_handling_f` 自己把 `vTaskResume(对应 Show 任务)`（如 case 1 → `Time_Show_fHandler`）
+- **谁挂起谁**：同时 `vTaskSuspend(Key_GetNum_fHandler)`（暂停按键扫描，防止在页面里误切）＋ `vTaskSuspend(NULL)`（把自己挂起，让出 CPU 给 Show 任务）
+- **为什么用 `taskENTER_CRITICAL()` 包住**：恢复/挂起是"多步状态变更"，若被中断打断可能停在"恢复了 A 却没挂起 B"的中间态；临界区保证切换动作原子完成。
+
 ### 7.2 退出信号从哪来、谁发出、谁接收？
 
 - **取材**：`EXTI9_5_IRQHandler`（`stm32f10x_it.c` L177-189）→ 发 `KeyExitHandler` 队列
@@ -355,7 +420,18 @@ flowchart LR
 - **注意一个细节**：退出后 `KeyExit_R = 0; global_var = 0;` 的**清零动作在任务里**（L111 等）
 - **写完后自查**：4 个任务抢同一个 `len=1` 队列 → **只有一个会拿到值**，其余三个收不到退出信号。
   那它们是怎么退出的？→ 看 `global_var==1` 这个条件（L108/155/194/245），**这才是真正兜底的退出路径**。
-  **这一段如果你自己讲清楚了，面试时是个亮点**（说明你理解"为什么还需要 global\_var 兜底"）
+  **这一段如果你自己讲清楚了，面试时是个亮点**（说明你理解"为什么还需要 global_var 兜底"）
+
+**✓ 已填写：**
+
+| 链 | 内容 |
+| --- | --- |
+| 谁来 | PA8 上升沿（物理按键按下）→ `EXTI9_5_IRQHandler` |
+| 谁发 | ISR 里 `xQueueSendFromISR(KeyExitHandler, &KeyExit, NULL)`（it.c L184） |
+| 谁收 | 4 个 Show 任务各 `xQueueReceiveFromISR(KeyExitHandler,…)`（main.c L107/154/193/244）→ 收到后恢复菜单、挂起自己 |
+
+- **清零细节**：`KeyExit_R = 0; global_var = 0;` 在**任务里**执行（L111 等），ISR 不清。
+- **为什么需要 `global_var` 兜底**：4 个任务抢 `len=1` 队列，**只有 1 个能拿到退出值**，其余 3 个收不到 → 它们靠 `global_var==1` 这个共享标志**也能退出**。即：队列是"快路径"，`global_var` 是"兜底路径"，两条路径保证 4 个页面都能退出。（代价：无保护全局标志 + 重复代码，见 7.3）
 
 ### 7.3 这套机制有什么问题，怎么改？（对照 D2）
 
@@ -366,6 +442,16 @@ flowchart LR
   - ④ 退出路径在 4 个任务里各写一遍（**重复代码**，一处改动要改 4 处）
 - **改法方向（自己写，别照抄）**：用**事件组**（`xEventGroupSetBits` 广播）/ 或改成一个**统一的状态机任务** / 或让退出只由 `Menu_handling_f` 一个人接收，再分发给 Show 任务
 - **写完后自查**：你的改法是否解决了"一个消息多个消费者"这个根本冲突？
+
+**✓ 已填写：**
+
+**问题**：
+1. **单消费者语义**：`KeyExitHandler` 是 `len=1` 队列，"取走即消失"，4 个任务抢 → 只有 1 个拿到，靠 `global_var` 兜底 → 队列形同虚设、耦合高。
+2. **API 误用**：任务里调 `xQueueReceiveFromISR`（只能用于中断上下文）。
+3. **无保护全局变量**：`global_var` 任务写、多任务读，无原子保护。
+4. **重复代码**：退出处理在 4 个 Show 任务各写一遍（L107-117/154-158/193-203/244-254），改一处要改 4 处。
+
+**改法方向**：改用**事件组**——ISR 里 `xEventGroupSetBitsFromISR` 广播"退出"位，4 个任务各自 `xEventGroupWaitBits` 监听，一次广播全部收到，天然解决"多消费者"；`global_var` 可删除；退出处理收敛进一个函数或统一由 `Menu_handling_f` 接收后再分发。**自查**：事件组方案解决了"一个消息多个消费者"的根本冲突。
 
 ***
 
@@ -401,7 +487,7 @@ flowchart LR
 
 ## 9. 待核对清单（09-27 盘点日逐条打勾）
 
-- [x] 任务数量、栈大小、优先级与代码一致 → **12 任务 / 1792 word / 全 4（Start 为 2）**（09-27 实读抽取，见附录）
+- [x] 任务数量、栈大小、优先级与代码一致 → **12 任务（含 Start）／栈合计 1920 word 含 Start（业务任务 1792 word）／全 4（Start 为 2）**（09-27 实读抽取，见附录）
 - [x] 队列的生产者/消费者映射完整（有无遗漏的收发点）→ **6 队列 / 收发点已全量搜索**（见第 5 节图 2）
 - [x] 关系图两张都与现实一致 → **已画**（待你复核）
 - [ ] 补充：模块之间的**头文件依赖**（谁 include 谁）
@@ -456,22 +542,33 @@ flowchart LR
 > ⚠️ 本附录数据**全部来自代码实读**，但我**没有替你确认过**。
 > 你抄进正文前，**自己回代码核一眼**——这一步不能省，否则等于用二手数据。
 
-## 附录 A：`startup_stm32f10x_md.s` 真实行号（★ 修正笔记错误）
+## 附录 A：`startup_stm32f10x_md.s` 真实行号（★ 09-27 已用于修正笔记）
 
-| 内容                                    | md.s 行号      | （笔记里误记的 hd.s 行号） |
-| ------------------------------------- | ------------ | ---------------- |
-| `Stack_Size EQU 0x400`（1KB）           | **L33**      | L42 附近           |
-| `Heap_Size EQU 0x200`（512B）           | **L44**      | L53 附近           |
-| `__Vectors` 起始                        | **L61**      | L72 附近           |
-| `__Vectors_End`                       | **L122**     | L142 附近          |
-| `__Vectors_Size` 计算                   | **L124**     | L144 附近          |
-| `Reset_Handler PROC`                  | **L129**     | L147             |
-| `IMPORT __main` / `IMPORT SystemInit` | **L131-132** | L149-150         |
-| `LDR R0,=SystemInit`                  | **L133**     | L151             |
-| `LDR R0,=__main`                      | **L135**     | L153             |
+> ✅ **2026-10-05 更新**：`notes_baremetal.md` 第 1 节行号**已全部替换为 md.s 实测值**，
+> 本表即为替换依据（两个文件的行号均从源码**逐行读出行号**，非估算）。
 
-- **向量表项数**：`md.s` = **59 项**（C8 只有 43 个中断）；`hd.s` = **76 项**
-- **文件行数**：`md.s` = **307 行**；`hd.s` = **358 行**
+| 内容                                    | `md.s` 行号（**正确**） | `hd.s` 行号（旧误记） | md.s 该行原文                                        | <br /> | <br />             |
+| ------------------------------------- | ----------------- | -------------- | ------------------------------------------------ | :----- | :----------------- |
+| `Stack_Size EQU 0x400`（1KB）           | **L33**           | L35            | `Stack_Size      EQU     0x00000400`             | <br /> | <br />             |
+| `Heap_Size EQU 0x200`（512B）           | **L44**           | L45            | `Heap_Size       EQU     0x00000200`             | <br /> | <br />             |
+| `AREA RESET` 开段                       | **L56**           | L57            | `AREA    RESET, DATA, READONLY`                  | <br /> | <br />             |
+| `__Vectors` 起始（第 0 项 = 栈顶）            | **L61**           | L62            | `__Vectors       DCD     __initial_sp`           | <br /> | <br />             |
+| 向量表 DCD 区间                            | **L62-121**       | L63-139        | 共 58 项 DCD（+第 0 项 = **59 项**）                    | <br /> | <br />             |
+| `__Vectors_End`                       | **L122**          | L140           | `__Vectors_End`                                  | <br /> | <br />             |
+| `__Vectors_Size` 计算                   | **L124**          | L142           | `__Vectors_Size  EQU  __Vectors_End - __Vectors` | <br /> | <br />             |
+| `AREA \|.text\|` 开段                   | **L126**          | L144           | \`AREA                                           | .text  | , CODE, READONLY\` |
+| `Reset_Handler PROC`                  | **L129**          | L147           | `Reset_Handler    PROC`                          | <br /> | <br />             |
+| `IMPORT __main` / `IMPORT SystemInit` | **L131-132**      | L149-150       | `IMPORT  __main` / `IMPORT  SystemInit`          | <br /> | <br />             |
+| `LDR R0,=SystemInit`                  | **L133**          | L151           | `LDR     R0, =SystemInit`                        | <br /> | <br />             |
+| `BLX R0`（调 SystemInit）                | **L134**          | L152           | `BLX     R0`                                     | <br /> | <br />             |
+| `LDR R0,=__main`                      | **L135**          | L153           | `LDR     R0, =__main`                            | <br /> | <br />             |
+| `BX R0`（跳 \_\_main，不返回）               | **L136**          | L154           | `BX      R0`                                     | <br /> | <br />             |
+| `Default_Handler PROC`                | **L183**          | L201           | `Default_Handler PROC`                           | <br /> | <br />             |
+| 文件尾 `END`                             | **L305**          | L356           | `END`                                            | <br /> | <br />             |
+
+- **向量表项数**：`md.s` = **59 项**（第 0 项栈顶 + 58 项 DCD）｜ `hd.s` = **76 项**（1 + 75）
+- **文件行数**：`md.s` = **307 行** ｜ `hd.s` = **358 行**
+- **`md.s`** **特有细节**：L296 写作 `LDR R1, =(Stack_Mem + Stack_Size)`，**等号后有空格**（hd.s 无）
 
 ## 附录 B：任务清单完整数据
 
@@ -491,7 +588,7 @@ flowchart LR
 | 11 | `beep_Work_f`      | 128                        | 4   | **挂起** | L421 |
 | 12 | `Idle`（内核）         | `configMINIMAL_STACK_SIZE` | 0   | 运行     | 内核自动 |
 
-- 栈合计：**1792 word = 7168 B**（含 Start）；5 个任务在 L424-428 被挂起
+- 栈合计（实测）：**含 Start（12 个用户任务）= 1920 word = 7680 B**；**不含 Start（11 个业务任务）= 1792 word = 7168 B**；5 个任务在 L424-428 被挂起
 - `configUSE_TIMERS=0` → **没有 Timer 任务**
 
 ## 附录 C：队列清单完整数据

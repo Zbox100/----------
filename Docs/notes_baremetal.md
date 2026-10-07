@@ -5,12 +5,11 @@
 > 验收：能不看本文件讲出来。第 9 周会抽这三条 ——
 > ①逐行讲清 `Reset_Handler`；②HardFault 时说出 LR / PC / PSP 的含义与定位思路；③说出 PendSV 为何保存 R4\~R11。
 
-> ⚠️ **【09-27 待修正 · 启动文件搞错了】**
-> 本文件第 1 节所有行号（L35-50 / L56-142 / L147-155 / L151-152）都是 **`startup_stm32f10x_hd.s`（358 行 / 向量表 76 项）** 的。
-> 但工程实际编译的是 **`startup_stm32f10x_md.s`（307 行 / 向量表 59 项）**——
-> 依据：`手环项目.uvprojx` 里 `<Device>STM32F103C8`，且在编译的 `.s` 文件只有 `startup_stm32f10x_md.s`。
-> 两个文件在 `Start/` 下并存，`hd`（大容量）与 `md`（中容量）**行号与向量表规模都不同**。
-> 修正对照表见 `Docs/architecture_draft.md` **附录 A**。→ **这一处需你自行决定是否改写，我先只标注不动原文。**
+> ✅ **【09-27 已修正 · 启动文件 = `startup_stm32f10x_md.s`】**
+> 本文件第 1 节的行号已按**工程实际编译的 `startup_stm32f10x_md.s`（307 行 / 向量表 59 项）**逐条核对更正。
+> 依据：`手环项目.uvprojx` 里 `<Device>STM32F103C8`，编译的 `.s` 文件只有 `startup_stm32f10x_md.s`。
+> `Start/` 下并存 8 个启动文件，`hd`（大容量 / 358 行 / 76 项）与 `md`（中容量 / 307 行 / 59 项）**行号完全不同**，
+> 早期版本误引 `hd.s` 行号，已全部替换。完整对照表见 `Docs/architecture_draft.md` **附录 A**。
 
 ***
 
@@ -18,12 +17,12 @@
 
 ### 1.1 文件结构分区（先做这个，避免"想读懂 450 行"）
 
-| 段落              | 大约行数     | 处理方式                                                                                                                        |
+| 段落              | 行号       | 处理方式                                                                                                                        |
 | --------------- | -------- | --------------------------------------------------------------------------------------------------------------------------- |
-| 栈 / 堆大小定义       | L35-50   | `Stack_Size=0x400`(1KB)/`Heap_Size=0x200`(512B)。这是 MSP主栈+C库堆，**与 FreeRTOS 10KB 堆无关**（后者在 heap\_4.c 的 ucHeap\[]）             |
-| 中断向量表           | L56-142  | 第0项 `__initial_sp`=栈顶；第1项 `Reset_Handler`；后续=各异常/中断入口。设栈指针由**硬件**复位时读第0项自动完成，不在 Reset\_Handler 里手写                          |
-| `Reset_Handler` | L147-155 | `IMPORT __main/SystemInit` → `BLX SystemInit`(配时钟) → `BX __main`(C库: 拷.data/清.bss/调main)。拷data/清bss**不在此文件**，在 C 库 \_\_main |
-| 各默认中断处理函数       | L159-326 | 全部 `B .` 死循环兜底 + `[WEAK]` 弱符号；被 stm32f10x\_it.c 中已实现的中断处理覆盖                                                                 |
+| 栈 / 堆大小定义       | L33-49   | `Stack_Size=0x400`(1KB, L33)/`Heap_Size=0x200`(512B, L44)。这是 MSP主栈+C库堆，**与 FreeRTOS 10KB 堆无关**（后者在 heap\_4.c 的 ucHeap\[]）             |
+| 中断向量表           | L56-124  | L56 `AREA RESET` 开段；L61 `__Vectors` 起表；L122 `__Vectors_End`；L124 算长度。第0项 `__initial_sp`(L61)=栈顶；第1项 `Reset_Handler`(L62)；后续=各异常/中断入口。设栈指针由**硬件**复位时读第0项自动完成，不在 Reset\_Handler 里手写                          |
+| `Reset_Handler` | L129-137 | `IMPORT __main/SystemInit`(L131-132) → `BLX SystemInit`(L134, 配时钟) → `BX __main`(L136, C库: 拷.data/清.bss/调main)。拷data/清bss**不在此文件**，在 C 库 \_\_main |
+| 各默认中断处理函数       | L139-303 | L139 起；各系统异常壳 L160-181（`B .` 死循环兜底 + `[WEAK]` 弱符号）；L183 `Default_Handler` 起批量声明外设弱符号（至 L285 左右）；L288-303 为 `__user_initial_stackheap`（两段式内存时给出栈/堆起止，本项目单区内存故不生效）；被 stm32f10x\_it.c 中已实现的中断处理覆盖 |
 
 ### 1.2 Reset\_Handler 逐行
 
@@ -32,16 +31,16 @@
 
 | 动作           | 行号       | 说明                                                                    |
 | ------------ | -------- | --------------------------------------------------------------------- |
-| 设栈指针         | 非代码行     | 上电复位时**硬件**自动读取向量表第 0 项 `__initial_sp` 载入 SP，**不在 Reset\_Handler 手写** |
-| 调 SystemInit | L151-152 | `LDR R0,=SystemInit` → `BLX R0`（BLX 可返回）                              |
-| 调 \_\_main   | L153-154 | `LDR R0,=__main` → `BX R0`（**BX 不返回**，\_\_main 最终接管并调 main）           |
+| 设栈指针         | 非代码行     | 上电复位时**硬件**自动读取向量表第 0 项 `__initial_sp`（L61）载入 SP，**不在 Reset\_Handler 手写** |
+| 调 SystemInit | L133-134 | `LDR R0,=SystemInit` → `BLX R0`（BLX 可返回）                              |
+| 调 \_\_main   | L135-136 | `LDR R0,=__main` → `BX R0`（**BX 不返回**，\_\_main 最终接管并调 main）           |
 
 ### 1.3 从复位到 main 的完整链路
 
 按顺序写清 5 步，并标注每一行的**源码位置**（启动文件 / 库函数 / 你的代码）：
 
 1. 上电复位，**硬件**自动读向量表第 0 项 `__initial_sp` 载入 SP（非软件写）
-2. **PC** 跳到 reset\_handler 开始执行（硬件读向量表第 1 项给的地址，L63→L147；SP 不动，仅 PC 跳转）
+2. **PC** 跳到 reset\_handler 开始执行（硬件读向量表第 1 项给的地址，L62→L129；SP 不动，仅 PC 跳转）
 3. 在 reset handler 中，先调用 system\_init 函数进行时钟配置
 4. 然后调用 \_\_main 函数在 C 库中进行 .data 的拷贝和 .bss 的清零
 5. **PC** 跳转到 main.c 函数进行处理（\_\_main 内最终调用 main，仍是 PC 跳转）
@@ -52,13 +51,13 @@
 > **图省事总结（三句话）**
 > ① 复位后：硬件设SP(栈顶) → PC跳Reset\_Handler → 调SystemInit配时钟 → 跳\_\_main拷data/清bss → 进main()。
 > ② PC = "接下来要跑哪条"的指针。`BLX`(带Link)=函数调用，存返回地址再跳、完了能回来；`BX`=纯跳转、一去不回。
-> ③ SystemInit 两行：L151 先把 SystemInit 地址放进 R0；L152 `BLX R0` = 按 R0 地址跳过去执行 SystemInit，跑完回 L153。
+> ③ SystemInit 两行：L133 先把 SystemInit 地址放进 R0；L134 `BLX R0` = 按 R0 地址跳过去执行 SystemInit，跑完回 L135。
 > 一条核心：**"跳转=把PC改成目标地址"；"调用(BL)还额外存个返回地址好能回来"；压栈=存现场/返回地址，为的是事后回来。**
 
-> **追问汇总：为什么压栈后 PC 去 SystemInit 而非 L153 的下一行？**
-> ① PC 的"默认行为"只有一种：**普通指令执行后 PC +4 顺延到下一条**（如 L151→L152）。
-> ② 但 **跳转指令会"覆盖"这个默认**：`BLX R0` = **PC ← R0(SystemInit地址)**，执行后 PC 不再顺延到 L154，而是被强制改去 SystemInit。**控制 PC 去哪的是"当条指令是普通还是跳转"**。
-> ③ 所以 L152→SystemInit 不是"本该死守 L153 却跑去别处"，而是**跳转指令主动改变了 PC 目标**；顺延(L152→L153)在本就被 BLX 打断。
+> **追问汇总：为什么压栈后 PC 去 SystemInit 而非 L135 的下一行？**
+> ① PC 的"默认行为"只有一种：**普通指令执行后 PC +4 顺延到下一条**（如 L133→L134）。
+> ② 但 **跳转指令会"覆盖"这个默认**：`BLX R0` = **PC ← R0(SystemInit地址)**，执行后 PC 不再顺延到 L136，而是被强制改去 SystemInit。**控制 PC 去哪的是"当条指令是普通还是跳转"**。
+> ③ 所以 L134→SystemInit 不是"本该死守 L135 却跑去别处"，而是**跳转指令主动改变了 PC 目标**；顺延(L134→L135)在本就被 BLX 打断。
 > 一句话记：**默认顺延 +4，跳转指令覆盖目标；BLX/BX 属于"覆盖"，所以压栈后 PC 去 SystemInit。**
 
 ### 1.4 伪指令词汇表
@@ -99,14 +98,14 @@
 | 中断压入 8 个现场(r4\~r11+r0\~r3) | 8×4=32 B |
 
 **Q: "压 PC" 是什么意思？**
-\= 把**当前 PC 的下一条指令地址**（即返回地址）存入栈，SP 下移 4 字节。执行 `BL/BLX` 时：先压 PC 存返回地址，再把 PC 设为子程序地址跳过去；子程序结束用 `BX LR`/`POP PC` 取回，回到调用处。**不压这个 PC，函数就不知道完成后回哪。**（见 1.2：`BLX SystemInit` 压入 L153 地址）
+\= 把**当前 PC 的下一条指令地址**（即返回地址）存入栈，SP 下移 4 字节。执行 `BL/BLX` 时：先压 PC 存返回地址，再把 PC 设为子程序地址跳过去；子程序结束用 `BX LR`/`POP PC` 取回，回到调用处。**不压这个 PC，函数就不知道完成后回哪。**（见 1.2：`BLX SystemInit` 压入 L135 地址）
 
 **Q: 是否"SP 移动到某个处理函数"？**
 **不成立。** "跳到哪个函数"是 **PC** 的职责，和 **SP 无关**。SP 只指向"栈当前位置"，永不知晓函数；复位时：
 
-- SP ← `__initial_sp`（栈顶内存）
-- PC ← 向量表\[1] = Reset\_Handler（跳函数）
-  即 **L36 是 SP 到栈顶，L37 是 PC 到 Reset\_Handler**，各管一事。
+- SP ← `__initial_sp`（栈顶内存，L37 符号 / L61 表项）
+- PC ← 向量表\[1] = Reset\_Handler（跳函数，L62 表项）
+  即 **L36 是 `Stack_Mem SPACE Stack_Size`（栈空间）→ L37 `__initial_sp` 是 SP 到栈顶；L62 是 PC 到 Reset\_Handler**，各管一事。
 
 **Q: 导入/导出符号（EXPORT/IMPORT）干嘛用的？**
 给**链接器**在"不同编译单元间连线"用，**不生成机器码**。
@@ -382,4 +381,32 @@ SysTick 异常 → 向量表 → SysTick_Handler()   ← [stm32f10x_it.c L142-15
 | ④ | `vPortClearBASEPRIFromISR()` | 恢复中断掩码 |
 
 **一句话**：SysTick 每 1ms（`configTICK_RATE_HZ` 决定）触发一次中断，`xPortSysTickHandler` 让内核"心跳"跳一下——需要切换时并不直接切换，而是**挂起 PendSV**，等当前中断退出后再在 PendSV 里完成切换（这样切换发生在安全时刻）。
+
+### 5.5 工程属性核对（uvprojx / map / 目录）
+
+> 核对时间：2026-10-05。数据全部从 `手环项目.uvprojx`、`Listings/手环项目.map`、根目录实读。
+
+**MCU 与启动文件：** `STM32F103C8`（[uvprojx L17](file:///e:/TongYongFiles/Keil_v5毕设备份/proj1/智能手环操作系统版本/手环项目.uvprojx#L17)）；启动文件 `startup_stm32f10x_md.s`（[uvprojx L542-544](file:///e:/TongYongFiles/Keil_v5毕设备份/proj1/智能手环操作系统版本/手环项目.uvprojx#L542-L544)）；Flash 驱动 `STM32F10x_128.FLM`（L24）。
+
+**构建工具链：**
+
+| 项 | 值 | 位置 |
+| --- | --- | --- |
+| 工具链 | **Keil MDK**（`ToolsetNumber` = 0x4） | uvprojx L11 |
+| 编译器 | **ARMCC V5.06 update 7 (build 960)** | uvprojx L13 `pCCUsed` |
+| 优化等级 | **-O1**（`<Optim>` = 1） | uvprojx L316 |
+
+**RTOS 配置 6 项（FreeRTOSConfig.h 实测）：** `configUSE_PREEMPTION=0`（协作式）／`configUSE_TIME_SLICING=1`／`configUSE_TIMERS=0`／`configUSE_IDLE_HOOK=0`／`configTOTAL_HEAP_SIZE=10KB`／`configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY=5`。
+
+**代码规模口径（⚠️ 易混）：**
+
+| 口径 | 数值 | 来源 |
+| --- | --- | --- |
+| 整工程 `Total RO Size`（Code + RO Data，含标准库/内核） | **34676B = 33.86kB** | map L3589 |
+| 整工程 `Total RW Size`（RW + ZI） | 17312B = 16.91kB | map L3590 |
+| 自研代码（User/+Hardware/+System/） | 需按 .map 各目标段累计 | 待算 |
+
+> ⚠️ "33.86kB" 是**整工程**口径，**不含"只统计自己写的代码"**——填写架构文档第 1 节时两者要分开写。
+
+**顶层目录清单（根目录实测，排除产物/配置）：** 核心 6 个 = `User/` `Hardware/` `System/` `Start/` `LIbrary/` `FreeRTOS/`；另有 `app/` `Docs/`。产物目录（排除）：`build/` `Objects/` `Listings/` `DebugConfig/`；配置目录：`.eide/` `.vscode/`。
 
