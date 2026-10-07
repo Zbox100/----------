@@ -4,8 +4,8 @@
 /**
   ******************************************************************************
   * @file    blood.c
-  * @author  ÒýÓÃ×ÔÕÅÅæÌï
-  * @brief   ÑªÒº¸üÐÂÓë×ª»»³ÌÐò
+  * @author  ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+  * @brief   ÑªÒºï¿½ï¿½ï¿½ï¿½ï¿½ï¿½×ªï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
   ******************************************************************************
   */
 
@@ -13,38 +13,38 @@
 #include "queue.h"
 
 extern QueueHandle_t Max30102Handler;
-uint16_t g_fft_index = 0;         	 	//fftÊäÈëÊä³öÏÂ±ê
+uint16_t g_fft_index = 0;         	 	//fftï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Â±ï¿½
 
-struct compx s1[FFT_N+16];           	//FFTÊäÈëºÍÊä³ö£º´ÓS[1]¿ªÊ¼´æ·Å£¬¸ù¾Ý´óÐ¡×Ô¼º¶¨Òå
-struct compx s2[FFT_N+16];           	//FFTÊäÈëºÍÊä³ö£º´ÓS[1]¿ªÊ¼´æ·Å£¬¸ù¾Ý´óÐ¡×Ô¼º¶¨Òå
+struct compx s1[FFT_N+16];           	//FFTï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½S[1]ï¿½ï¿½Ê¼ï¿½ï¿½Å£ï¿½ï¿½ï¿½ï¿½Ý´ï¿½Ð¡ï¿½Ô¼ï¿½ï¿½ï¿½ï¿½ï¿½
+struct compx s2[FFT_N+16];           	//FFTï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½S[1]ï¿½ï¿½Ê¼ï¿½ï¿½Å£ï¿½ï¿½ï¿½ï¿½Ý´ï¿½Ð¡ï¿½Ô¼ï¿½ï¿½ï¿½ï¿½ï¿½
 
 struct
 {
-	float 	Hp	;			//Ñªºìµ°°×	
-	float 	HpO2;			//ÑõºÏÑªºìµ°°×
+	float 	Hp	;			//Ñªï¿½ìµ°ï¿½ï¿½	
+	float 	HpO2;			//ï¿½ï¿½ï¿½ï¿½Ñªï¿½ìµ°ï¿½ï¿½
 	
-}g_BloodWave;//ÑªÒº²¨ÐÎÊý¾Ý
+}g_BloodWave;//ÑªÒºï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 
-BloodData g_blooddata = {0};					//ÑªÒºÊý¾Ý´æ´¢
+BloodData g_blooddata = {0};					//ÑªÒºï¿½ï¿½ï¿½Ý´æ´¢
 
-#define CORRECTED_VALUE			47   			//±ê¶¨ÑªÒºÑõÆøº¬Á¿
+#define CORRECTED_VALUE			47   			//ï¿½ê¶¨ÑªÒºï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 
 /*funcation start ------------------------------------------------------------*/
-//ÑªÒº¼ì²âÐÅÏ¢¸üÐÂ
+//ÑªÒºï¿½ï¿½ï¿½ï¿½ï¿½Ï¢ï¿½ï¿½ï¿½ï¿½
 void blood_data_update(void)
 {
-	//±êÖ¾Î»±»Ê¹ÄÜÊ± ¶ÁÈ¡FIFO
+	//ï¿½ï¿½Ö¾Î»ï¿½ï¿½Ê¹ï¿½ï¿½Ê± ï¿½ï¿½È¡FIFO
 	g_fft_index=0;
 	while(g_fft_index < FFT_N)
 	{
 		while(MAX30102_INTPin_Read()==0)
 		{
-			//¶ÁÈ¡FIFO
+			//ï¿½ï¿½È¡FIFO
 			max30102_read_fifo();  //read from MAX30102 FIFO2
-			//½«Êý¾ÝÐ´ÈëfftÊäÈë²¢Çå³ýÊä³ö
+			//ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ð´ï¿½ï¿½fftï¿½ï¿½ï¿½ë²¢ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 			if(g_fft_index < FFT_N)
 			{
-				//½«Êý¾ÝÐ´ÈëfftÊäÈë²¢Çå³ýÊä³ö
+				//ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ð´ï¿½ï¿½fftï¿½ï¿½ï¿½ë²¢ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 				s1[g_fft_index].real = fifo_red;
 				s1[g_fft_index].imag= 0;
 				s2[g_fft_index].real = fifo_ir;
@@ -55,12 +55,12 @@ void blood_data_update(void)
 	}
 }
 
-//ÑªÒºÐÅÏ¢×ª»»
+//ÑªÒºï¿½ï¿½Ï¢×ªï¿½ï¿½
 void blood_data_translate(void)
 {	
 	float n_denom;
 	uint16_t i;
-	//Ö±Á÷ÂË²¨
+	//Ö±ï¿½ï¿½ï¿½Ë²ï¿½
 	float dc_red =0; 
 	float dc_ir =0;
 	float ac_red =0; 
@@ -79,7 +79,7 @@ void blood_data_translate(void)
 		s2[i].real =  s2[i].real - dc_ir ; 
 	}
 	
-	//ÒÆ¶¯Æ½¾ùÂË²¨
+	//ï¿½Æ¶ï¿½Æ½ï¿½ï¿½ï¿½Ë²ï¿½
 //	UsartPrintf(USART_DEBUG,"***********8 pt Moving Average red******************************************************\r\n");
 //	
 	for(i = 1;i < FFT_N-1;i++) 
@@ -90,7 +90,7 @@ void blood_data_translate(void)
 			n_denom= ( s2[i-1].real + 2*s2[i].real + s2[i+1].real);
 			s2[i].real=  n_denom/4.00; 			
 	}
-	//°ËµãÆ½¾ùÂË²¨
+	//ï¿½Ëµï¿½Æ½ï¿½ï¿½ï¿½Ë²ï¿½
 	for(i = 0;i < FFT_N-8;i++) 
 	{
 			n_denom= ( s1[i].real+s1[i+1].real+ s1[i+2].real+ s1[i+3].real+ s1[i+4].real+ s1[i+5].real+ s1[i+6].real+ s1[i+7].real);
@@ -107,19 +107,19 @@ void blood_data_translate(void)
 //		UsartPrintf(USART_DEBUG,"%f\r\n",s2[i].real);	
 //	}
 //	UsartPrintf(USART_DEBUG,"**************************************************************************************************\r\n");
-	//¿ªÊ¼±ä»»ÏÔÊ¾	
+	//ï¿½ï¿½Ê¼ï¿½ä»»ï¿½ï¿½Ê¾	
 	g_fft_index = 0;	
-	//¿ìËÙ¸µÀïÒ¶±ä»»
+	//ï¿½ï¿½ï¿½Ù¸ï¿½ï¿½ï¿½Ò¶ï¿½ä»»
 	FFT(s1);
 	FFT(s2);
-	//½âÆ½·½
-//	UsartPrintf(USART_DEBUG,"¿ªÊ¼FFTËã·¨****************************************************************************************************\r\n");
+	//ï¿½ï¿½Æ½ï¿½ï¿½
+//	UsartPrintf(USART_DEBUG,"ï¿½ï¿½Ê¼FFTï¿½ã·¨****************************************************************************************************\r\n");
 	for(i = 0;i < FFT_N;i++) 
 	{
 		s1[i].real=sqrtf(s1[i].real*s1[i].real+s1[i].imag*s1[i].imag);
-		s1[i].real=sqrtf(s2[i].real*s2[i].real+s2[i].imag*s2[i].imag);
+		s2[i].real=sqrtf(s2[i].real*s2[i].real+s2[i].imag*s2[i].imag);
 	}
-	//¼ÆËã½»Á÷·ÖÁ¿
+	//ï¿½ï¿½ï¿½ã½»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 	for (i=1 ; i<FFT_N ; i++ ) 
 	{
 		ac_red += s1[i].real ;
@@ -136,7 +136,7 @@ void blood_data_translate(void)
 //		UsartPrintf(USART_DEBUG,"%f\r\n",s2[i].real);
 //	}
 //	
-//	UsartPrintf(USART_DEBUG,"½áÊøFFTËã·¨***************************************************************************************************************\r\n");
+//	UsartPrintf(USART_DEBUG,"ï¿½ï¿½ï¿½ï¿½FFTï¿½ã·¨***************************************************************************************************************\r\n");
 	for(i = 0;i < 50;i++) 
 	{
 		if(s1[i].real<=10)
@@ -144,7 +144,7 @@ void blood_data_translate(void)
 	}
 	
 	//UsartPrintf(USART_DEBUG,"%d\r\n",(int)i);
-	//¶ÁÈ¡·åÖµµãµÄºá×ø±ê  ½á¹ûµÄÎïÀíÒâÒåÎª 
+	//ï¿½ï¿½È¡ï¿½ï¿½Öµï¿½ï¿½Äºï¿½ï¿½ï¿½ï¿½ï¿½  ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Îª 
 	int s1_max_index = find_max_num_index(s1, 30);
 	int s2_max_index = find_max_num_index(s2, 30);
 //	UsartPrintf(USART_DEBUG,"%d\r\n",s1_max_index);
@@ -163,14 +163,14 @@ void blood_data_translate(void)
 void blood_Loop(void)
 {
 	
-	//ÑªÒºÐÅÏ¢»ñÈ¡
+	//ÑªÒºï¿½ï¿½Ï¢ï¿½ï¿½È¡
 	blood_data_update();
-	//ÑªÒºÐÅÏ¢×ª»»
+	//ÑªÒºï¿½ï¿½Ï¢×ªï¿½ï¿½
 	blood_data_translate();
-	//ÏÔÊ¾ÑªÒº×´Ì¬ÐÅÏ¢
+	//ï¿½ï¿½Ê¾ÑªÒº×´Ì¬ï¿½ï¿½Ï¢
 	g_blooddata.SpO2 = (g_blooddata.SpO2 > 99.99) ? 99.99:g_blooddata.SpO2;
-    UsartPrintf(USART_DEBUG,"Ö¸ÁîÐÄÂÊ%3d",g_blooddata.heart);
-    UsartPrintf(USART_DEBUG,"Ö¸ÁîÑªÑõ%0.2f",g_blooddata.SpO2);
+    UsartPrintf(USART_DEBUG,"Ö¸ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½%3d",g_blooddata.heart);
+    UsartPrintf(USART_DEBUG,"Ö¸ï¿½ï¿½Ñªï¿½ï¿½%0.2f",g_blooddata.SpO2);
     
     xQueueSend(Max30102Handler,&g_blooddata,portMAX_DELAY);
 	
