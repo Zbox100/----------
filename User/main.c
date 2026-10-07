@@ -63,7 +63,9 @@ void Adxl345_Work_f(void*arg)
         uint32_t Normal_num=0;                          //正常次数
         unsigned char ReadAdxl345 = 0;	                    //读取adxl345数据
         unsigned int Number_of_detections = 0;			//检测次数
-        unsigned char Flag = 0;                         //碰撞检测标志
+        // 在任务局部声明（替换原来的 unsigned char Flag） 
+        uint8_t impact_x = 0 ; // X 轴冲击标志 
+        uint8_t impact_y = 0 ; // Y 轴冲击标志
         float buf = 0;                                 //缓冲区
    	
 	while(1)
@@ -90,9 +92,18 @@ void Adxl345_Work_f(void*arg)
               
 				if(temp_X < 1 || temp_X > 200000) temp_X = 0;
 				if(temp_Y < 1 || temp_Y > 200000) temp_Y = 0;
+
+                /* ① 逐轴检测：各自独立标志 */ 
+                impact_x = (temp_X > 700 ) ? 1 : 0 ;
+                impact_y = (temp_Y > 700 ) ? 1 : 0 ;
  
-				if(temp_X>700||temp_Y>700){Flag++;}
-				if((Flag>0)&&IN){vTaskResume(beep_Work_fHandler);Flag=0;IN = 0;} 
+				/* ② 报警触发：任一轴冲击且使能 */
+				if ((impact_x || impact_y) && IN) {
+                vTaskResume(beep_Work_fHandler);
+                impact_x = 0 ;
+                impact_y = 0 ;
+                IN = 0 ; // 触发一次后清除使能
+                }
                             
          vTaskDelay(100);
     }   
@@ -101,7 +112,7 @@ void Adxl345_Work_f(void*arg)
 
 void Adxl345_Show_f( void * arg )
 {
-    uint8_t dis_buf_R;
+    uint32_t dis_buf_R;
     while(1)
     {
         xQueueReceiveFromISR(KeyExitHandler,&KeyExit_R,NULL);
@@ -456,8 +467,8 @@ int main(void)
     KeyGetHandler   = xQueueCreate(1, sizeof(uint8_t)  * 1);
     KeyExitHandler  = xQueueCreate(1, sizeof(uint8_t)  * 1); 
     ADX1345Handler  = xQueueCreate(1, sizeof(uint32_t)  * 1); 
-    DTH11Handler    = xQueueCreate(1, sizeof(&DHT11_Data_R2)  * 1); 
-    Max30102Handler = xQueueCreate(1, sizeof(&Trans)  * 1); 
+    DTH11Handler    = xQueueCreate(1, sizeof(DHT11_Data_TypeDef)  * 1); 
+    Max30102Handler = xQueueCreate(1, sizeof(BloodData)  * 1); 
     
     xReceive = xTaskCreate(Start_MyTaskList,"Start_MyTaskList",128,NULL ,2,&Start_MyTaskListHandler);
     /* 启动任务调度 */           
