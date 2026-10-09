@@ -115,7 +115,7 @@ void Adxl345_Show_f( void * arg )
     uint32_t dis_buf_R;
     while(1)
     {
-        xQueueReceiveFromISR(KeyExitHandler,&KeyExit_R,NULL);
+        xQueueReceive(KeyExitHandler,&KeyExit_R,NULL);
         if((KeyExit_R == 1)||(global_var==1))
         {
             taskENTER_CRITICAL();
@@ -162,7 +162,7 @@ void Time_Show_f( void*arg ) //时间显示任务任务
         xTaskResumeAll();
         }
         
-        xQueueReceiveFromISR(KeyExitHandler,&KeyExit_R,NULL);
+        xQueueReceive(KeyExitHandler,&KeyExit_R,NULL);
         if((KeyExit_R == 1)||(global_var==1))
         {taskENTER_CRITICAL();
         KeyExit_R = 0;global_var = 0;OLED_Clear();vTaskResume(Menu_handling_fHandler);vTaskResume(Key_GetNum_fHandler);vTaskSuspend(NULL);
@@ -201,7 +201,7 @@ void DTH11_Show_f(void*arg)
 
     while(1)
     {   
-        xQueueReceiveFromISR(KeyExitHandler,&KeyExit_R,NULL);
+        xQueueReceive(KeyExitHandler,&KeyExit_R,NULL);
         if((KeyExit_R == 1)||(global_var==1))
         {
             taskENTER_CRITICAL();
@@ -252,7 +252,7 @@ void Max30102_Show_f(void*arg)
 {
    while(1)
    {
-        xQueueReceiveFromISR(KeyExitHandler,&KeyExit_R,NULL);
+        xQueueReceive(KeyExitHandler,&KeyExit_R,NULL);
         if((KeyExit_R == 1)||(global_var==1))
         {
             taskENTER_CRITICAL();
