@@ -14,5 +14,8 @@
 			"--compile-commands-dir=e:/vibe_coding_code/cursor_code/edge_ai_voice/build/clangd",
 			"--query-driver=C:/Espressif/tools/xtensa-esp-elf/**/bin/xtensa-*-elf-gcc.exe"
 		]
+	},
+	"trae": {
+		"workspaceId": "aa0dd5ffbca75a62345ecfe39357373b"
 	}
 }

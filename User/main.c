@@ -58,56 +58,41 @@ QueueHandle_t Max30102Handler  =NULL;
 
 void Adxl345_Work_f(void*arg)
 {	
-
-        volatile uint32_t time = 0;                     // ms计时变量 
         uint32_t Normal_num=0;                          //正常次数
-        unsigned char ReadAdxl345 = 0;	                    //读取adxl345数据
         unsigned int Number_of_detections = 0;			//检测次数
         // 在任务局部声明（替换原来的 unsigned char Flag） 
         uint8_t impact_x = 0 ; // X 轴冲击标志 
         uint8_t impact_y = 0 ; // Y 轴冲击标志
         float buf = 0;                                 //缓冲区
-   	
+        TickType_t xLastWakeTime = xTaskGetTickCount(); //记录首次唤醒时刻,建立绝对时间基准网格
+        const TickType_t xPeriod = pdMS_TO_TICKS(50);   //50ms 精确采样周期
+
 	while(1)
 	{
-        if(time==720000)
-		{
-			time=0;
-			ReadAdxl345=1;
-		}
-		else
-		{
-				time++;
-		}
-        
-		if(ReadAdxl345== 1)                                                     
-		{
-				ReadAdxl345= 0; 
-                ReadData_x();  						                            //三轴检测函数
-				buf = temp_Z - buf;
-				if(Number_of_detections&&(buf >25)){Normal_num++;}              //正常次数++
-				else Number_of_detections++;
-				buf = temp_Z ;
-				xQueueSend(ADX1345Handler,&Normal_num,0);
-              
-				if(temp_X < 1 || temp_X > 200000) temp_X = 0;
-				if(temp_Y < 1 || temp_Y > 200000) temp_Y = 0;
+        vTaskDelayUntil(&xLastWakeTime, xPeriod);       //按绝对时间网格唤醒,补偿执行耗时,保证 50ms 等间隔
 
-                /* ① 逐轴检测：各自独立标志 */ 
-                impact_x = (temp_X > 700 ) ? 1 : 0 ;
-                impact_y = (temp_Y > 700 ) ? 1 : 0 ;
- 
-				/* ② 报警触发：任一轴冲击且使能 */
-				if ((impact_x || impact_y) && IN) {
-                vTaskResume(beep_Work_fHandler);
-                impact_x = 0 ;
-                impact_y = 0 ;
-                IN = 0 ; // 触发一次后清除使能
-                }
-                            
-         vTaskDelay(100);
-    }   
-}
+        ReadData_x();  						            //三轴检测函数
+        buf = temp_Z - buf;
+        if(Number_of_detections&&(buf >25)){Normal_num++;}              //正常次数++
+        else Number_of_detections++;
+        buf = temp_Z ;
+        xQueueSend(ADX1345Handler,&Normal_num,0);
+      
+        if(temp_X < 1 || temp_X > 200000) temp_X = 0;
+        if(temp_Y < 1 || temp_Y > 200000) temp_Y = 0;
+
+        /* ① 逐轴检测：各自独立标志 */ 
+        impact_x = (temp_X > 700 ) ? 1 : 0 ;
+        impact_y = (temp_Y > 700 ) ? 1 : 0 ;
+
+        /* ② 报警触发：任一轴冲击且使能 */
+        if ((impact_x || impact_y) && IN) {
+            vTaskResume(beep_Work_fHandler);
+            impact_x = 0 ;
+            impact_y = 0 ;
+            IN = 0 ; // 触发一次后清除使能
+        }
+    }
 }
 
 void Adxl345_Show_f( void * arg )
