@@ -8,15 +8,15 @@
 
 /*
 ************************************************************
-*	º¯ÊýÃû³Æ£º	Usart1_Init
+*	ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Æ£ï¿½	Usart1_Init
 *
-*	º¯Êý¹¦ÄÜ£º	´®¿Ú1³õÊ¼»¯
+*	ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ü£ï¿½	ï¿½ï¿½ï¿½ï¿½1ï¿½ï¿½Ê¼ï¿½ï¿½
 *
-*	Èë¿Ú²ÎÊý£º	baud£ºÉè¶¨µÄ²¨ÌØÂÊ
+*	ï¿½ï¿½Ú²ï¿½ï¿½ï¿½ï¿½ï¿½	baudï¿½ï¿½ï¿½è¶¨ï¿½Ä²ï¿½ï¿½ï¿½ï¿½ï¿½
 *
-*	·µ»Ø²ÎÊý£º	ÎÞ
+*	ï¿½ï¿½ï¿½Ø²ï¿½ï¿½ï¿½ï¿½ï¿½	ï¿½ï¿½
 *
-*	ËµÃ÷£º		TX-PA9		RX-PA10£¬´Ë²¿·ÖÒýÓÃ×ÔÕÅÅæÌï
+*	Ëµï¿½ï¿½ï¿½ï¿½		TX-PA9		RX-PA10ï¿½ï¿½ï¿½Ë²ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 ************************************************************
 */
  void Usart1_Init(unsigned int baud)
@@ -42,16 +42,16 @@
 	GPIO_Init(GPIOA, &gpioInitStruct);
 	
 	usartInitStruct.USART_BaudRate = baud;
-	usartInitStruct.USART_HardwareFlowControl = USART_HardwareFlowControl_None;		//ÎÞÓ²¼þÁ÷¿Ø
-	usartInitStruct.USART_Mode = USART_Mode_Rx | USART_Mode_Tx;						//½ÓÊÕºÍ·¢ËÍ
-	usartInitStruct.USART_Parity = USART_Parity_No;									//ÎÞÐ£Ñé
+	usartInitStruct.USART_HardwareFlowControl = USART_HardwareFlowControl_None;		//ï¿½ï¿½Ó²ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+	usartInitStruct.USART_Mode = USART_Mode_Rx | USART_Mode_Tx;						//ï¿½ï¿½ï¿½ÕºÍ·ï¿½ï¿½ï¿½
+	usartInitStruct.USART_Parity = USART_Parity_No;									//ï¿½ï¿½Ð£ï¿½ï¿½
 	usartInitStruct.USART_StopBits = USART_StopBits_1;								//1Î»Í£Ö¹Î»
-	usartInitStruct.USART_WordLength = USART_WordLength_8b;							//8Î»Êý¾ÝÎ»
+	usartInitStruct.USART_WordLength = USART_WordLength_8b;							//8Î»ï¿½ï¿½ï¿½ï¿½Î»
 	USART_Init(USART1, &usartInitStruct);
 	
-	USART_Cmd(USART1, ENABLE);														//Ê¹ÄÜ´®¿Ú
+	USART_Cmd(USART1, ENABLE);														//Ê¹ï¿½Ü´ï¿½ï¿½ï¿½
 	
-	USART_ITConfig(USART1, USART_IT_RXNE, ENABLE);									//Ê¹ÄÜ½ÓÊÕÖÐ¶Ï
+	USART_ITConfig(USART1, USART_IT_RXNE, ENABLE);									//Ê¹ï¿½Ü½ï¿½ï¿½ï¿½ï¿½Ð¶ï¿½
 	
 	nvicInitStruct.NVIC_IRQChannel = USART1_IRQn;
 	nvicInitStruct.NVIC_IRQChannelCmd = ENABLE;
@@ -63,17 +63,17 @@
 
 /*
 ************************************************************
-*	º¯ÊýÃû³Æ£º	Usart_SendString
+*	ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Æ£ï¿½	Usart_SendString
 *
-*	º¯Êý¹¦ÄÜ£º	´®¿ÚÊý¾Ý·¢ËÍ
+*	ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ü£ï¿½	ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ý·ï¿½ï¿½ï¿½
 *
-*	Èë¿Ú²ÎÊý£º	USARTx£º´®¿Ú×é
-*				str£ºÒª·¢ËÍµÄÊý¾Ý
-*				len£ºÊý¾Ý³¤¶È
+*	ï¿½ï¿½Ú²ï¿½ï¿½ï¿½ï¿½ï¿½	USARTxï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+*				strï¿½ï¿½Òªï¿½ï¿½ï¿½Íµï¿½ï¿½ï¿½ï¿½ï¿½
+*				lenï¿½ï¿½ï¿½ï¿½ï¿½Ý³ï¿½ï¿½ï¿½
 *
-*	·µ»Ø²ÎÊý£º	ÎÞ
+*	ï¿½ï¿½ï¿½Ø²ï¿½ï¿½ï¿½ï¿½ï¿½	ï¿½ï¿½
 *
-*	ËµÃ÷£º		
+*	Ëµï¿½ï¿½ï¿½ï¿½		
 ************************************************************
 */
 void Usart_SendString(USART_TypeDef *USARTx, unsigned char *str, unsigned short len)
@@ -83,24 +83,24 @@ void Usart_SendString(USART_TypeDef *USARTx, unsigned char *str, unsigned short 
 	
 	for(; count < len; count++)
 	{
-		USART_SendData(USARTx, *str++);									//·¢ËÍÊý¾Ý
-		while(USART_GetFlagStatus(USARTx, USART_FLAG_TC) == RESET);		//µÈ´ý·¢ËÍÍê³É
+		USART_SendData(USARTx, *str++);									//ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+		while(USART_GetFlagStatus(USARTx, USART_FLAG_TC) == RESET);		//ï¿½È´ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 	}
 
 }
 
 /*
 ************************************************************
-*	º¯ÊýÃû³Æ£º	UsartPrintf
+*	ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Æ£ï¿½	UsartPrintf
 *
-*	º¯Êý¹¦ÄÜ£º	¸ñÊ½»¯´òÓ¡
+*	ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ü£ï¿½	ï¿½ï¿½Ê½ï¿½ï¿½ï¿½ï¿½Ó¡
 *
-*	Èë¿Ú²ÎÊý£º	USARTx£º´®¿Ú×é
-*				fmt£º²»¶¨³¤²Î
+*	ï¿½ï¿½Ú²ï¿½ï¿½ï¿½ï¿½ï¿½	USARTxï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+*				fmtï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 *
-*	·µ»Ø²ÎÊý£º	ÎÞ
+*	ï¿½ï¿½ï¿½Ø²ï¿½ï¿½ï¿½ï¿½ï¿½	ï¿½ï¿½
 *
-*	ËµÃ÷£º		
+*	Ëµï¿½ï¿½ï¿½ï¿½		
 ************************************************************
 */
 void UsartPrintf(USART_TypeDef *USARTx, char *fmt,...)
@@ -111,7 +111,7 @@ void UsartPrintf(USART_TypeDef *USARTx, char *fmt,...)
 	unsigned char *pStr = UsartPrintfBuf;
 	
 	va_start(ap, fmt);
-	vsnprintf((char *)UsartPrintfBuf, sizeof(UsartPrintfBuf), fmt, ap);							//¸ñÊ½»¯
+	vsnprintf((char *)UsartPrintfBuf, sizeof(UsartPrintfBuf), fmt, ap);							//ï¿½ï¿½Ê½ï¿½ï¿½
 	va_end(ap);
 	
 	while(*pStr != 0)
@@ -124,15 +124,15 @@ void UsartPrintf(USART_TypeDef *USARTx, char *fmt,...)
 
 /*
 ************************************************************
-*	º¯ÊýÃû³Æ£º	USART1_IRQHandler
+*	ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Æ£ï¿½	USART1_IRQHandler
 *
-*	º¯Êý¹¦ÄÜ£º	´®¿Ú1ÊÕ·¢ÖÐ¶Ï
+*	ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ü£ï¿½	ï¿½ï¿½ï¿½ï¿½1ï¿½Õ·ï¿½ï¿½Ð¶ï¿½
 *
-*	Èë¿Ú²ÎÊý£º	ÎÞ
+*	ï¿½ï¿½Ú²ï¿½ï¿½ï¿½ï¿½ï¿½	ï¿½ï¿½
 *
-*	·µ»Ø²ÎÊý£º	ÎÞ
+*	ï¿½ï¿½ï¿½Ø²ï¿½ï¿½ï¿½ï¿½ï¿½	ï¿½ï¿½
 *
-*	ËµÃ÷£º	×ÔÖ÷±àÐ´	
+*	Ëµï¿½ï¿½ï¿½ï¿½	ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ð´	
 ************************************************************
 */
 

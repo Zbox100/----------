@@ -223,7 +223,7 @@
  * 用户必须提供一个栈溢出钩子函数，如果使用的话
  * 此值可以为1或者2，因为有两种栈溢出检测方法
  */
-//#define configCHECK_FOR_STACK_OVERFLOW          0
+#define configCHECK_FOR_STACK_OVERFLOW              2
 
 //使用内存申请失败钩子函数
 #define configUSE_MALLOC_FAILED_HOOK            0

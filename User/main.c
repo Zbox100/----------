@@ -1,6 +1,7 @@
 #include "stm32f10x.h"                // STM32F103系列芯片的标准外设库核心头文件
 #include "stm32f10x_it.h"             // STM32F103系列芯片的中断服务函数定义头文件
 #include "string.h"                   // C语言标准库字符串操作头文件
+#include "math.h"                     // 数学库(sqrtf/fabsf,用于合加速度与差分计算)
 #include "Delay.h"                    // 自定义延时函数模块头文件
 #include "Oled.h"                     // OLED显示屏驱动模块头文件
 #include "usart.h"                    // 自定义串口通信（USART）模块头文件
@@ -63,7 +64,11 @@ void Adxl345_Work_f(void*arg)
         // 在任务局部声明（替换原来的 unsigned char Flag） 
         uint8_t impact_x = 0 ; // X 轴冲击标志 
         uint8_t impact_y = 0 ; // Y 轴冲击标志
-        float buf = 0;                                 //缓冲区
+        float buf = 0;                                 //缓冲区(上一帧合加速度)
+        float mag = 0;                                 //三轴合加速度幅值,静止时约为1000mg
+        float diff = 0;                                //合加速度差分绝对值
+        uint8_t step_lock = 0;                         //计步锁定标志:一次波动只计1步,信号回落才解锁
+        TickType_t lastStepTick = 0;                   //上一次计步的时刻(tick)
         TickType_t xLastWakeTime = xTaskGetTickCount(); //记录首次唤醒时刻,建立绝对时间基准网格
         const TickType_t xPeriod = pdMS_TO_TICKS(50);   //50ms 精确采样周期
 
@@ -72,10 +77,19 @@ void Adxl345_Work_f(void*arg)
         vTaskDelayUntil(&xLastWakeTime, xPeriod);       //按绝对时间网格唤醒,补偿执行耗时,保证 50ms 等间隔
 
         ReadData_x();  						            //三轴检测函数
-        buf = temp_Z - buf;
-        if(Number_of_detections&&(buf >25)){Normal_num++;}              //正常次数++
+        mag = sqrtf(temp_X*temp_X + temp_Y*temp_Y + temp_Z*temp_Z);  //三轴合加速度,对握持方向不敏感
+        diff = fabsf(mag - buf);                               //合加速度差分绝对值
+        //      UsartPrintf(USART1, "mag=%.0f diff=%.0f\r\n", mag, diff); //调试打印:128字栈会被其256B缓冲+vprintf击穿导致死机,已停用
+        if(Number_of_detections&&(diff > 150)&&(step_lock == 0)){     //差分超过触发阈值且本次波动尚未计步
+            if((xTaskGetTickCount() - lastStepTick) >= pdMS_TO_TICKS(400)){  //距上次计步至少400ms
+                Normal_num++;                                      //正常次数++
+                lastStepTick = xTaskGetTickCount();                //记录本次计步时刻
+                step_lock = 1;                                     //锁定,信号回落前不再计步
+            }
+        }
         else Number_of_detections++;
-        buf = temp_Z ;
+        if(diff < 30){step_lock = 0;}                              //迟滞解锁:差分回落到30以下才解除锁定
+        buf = mag;
         xQueueSend(ADX1345Handler,&Normal_num,0);
       
         if(temp_X < 1 || temp_X > 200000) temp_X = 0;
@@ -405,14 +419,14 @@ void Start_MyTaskList(void *arg)  //任务启动任务
     taskENTER_CRITICAL();
     xTaskCreate(Time_Work_f,"Time_Work_f",128,NULL ,4,&Time_Work_fHandler);
     xTaskCreate(Time_Show_f,"Time_Show_f",128,NULL ,4,&Time_Show_fHandler);
-    xTaskCreate(Adxl345_Work_f,"Adxl345_Work_f",128,NULL ,4,&Adxl345_Work_fHandler);
+    xTaskCreate(Adxl345_Work_f,"Adxl345_Work_f",192,NULL ,4,&Adxl345_Work_fHandler);
     xTaskCreate(Adxl345_Show_f,"Adxl345_Show_f",128,NULL ,4,&Adxl345_Show_fHandler);
     xTaskCreate(DTH11_Work_f,"DTH11_Work_f",224,NULL ,4,&DTH11_Work_fHandler);
     xTaskCreate(DTH11_Show_f,"DTH11_Show_f",224,NULL ,4,&DTH11_Show_fHandler);
     xTaskCreate(Max30102_Work_f,"Max30102_Work_f",224,NULL ,4,&Max30102_Work_fHandler);
     xTaskCreate(Max30102_Show_f,"Max30102_Show_f",224,NULL ,4,&Max30102_Show_fHandler);
     
-    xTaskCreate(Menu_handling_f,"Menu_handling_f",128,NULL ,4,&Menu_handling_fHandler);
+    xTaskCreate(Menu_handling_f,"Menu_handling_f",256,NULL ,4,&Menu_handling_fHandler);
     xTaskCreate(Key_GetNum_f,"Key_GetNum_f",128,NULL ,4,&Key_GetNum_fHandler);
     xTaskCreate(beep_Work_f,"beep_Work_f",128,NULL ,4,&beep_Work_fHandler);
     
@@ -463,5 +477,15 @@ int main(void)
     return -1;   
     while(1);
     
+}
+
+/* 栈溢出钩子:configCHECK_FOR_STACK_OVERFLOW=2 时必须实现。
+ * 触发说明某任务栈击穿,在此冻结系统并停中断,便于定位是哪个任务溢出 */
+void vApplicationStackOverflowHook( TaskHandle_t xTask, char *pcTaskName )
+{
+    ( void ) xTask;
+    ( void ) pcTaskName;
+    taskDISABLE_INTERRUPTS();
+    for( ;; );
 }
 
