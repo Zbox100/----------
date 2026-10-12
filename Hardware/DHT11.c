@@ -6,6 +6,7 @@
 #include "FreeRTOS.h"
 #include "task.h"
 #include "queue.h"
+#include "DHT11.h"
 /*部分引用*/
 extern QueueHandle_t DTH11Handler;
 // DHT11的数据引脚连接到GPIOA的GPIO_Pin_7
@@ -100,14 +101,6 @@ GPIO_Init(DHT11_DATA_GPIO_PORT, &GPIO_InitStructure);
 	
 GPIO_SetBits(DHT11_DATA_GPIO_PORT, DHT11_DATA_PIN);
 }
-typedef struct
-{
-    uint8_t humi_int;    // 湿度的整数部分
-    uint8_t humi_deci;   // 湿度的小数部分
-    uint8_t temp_int;    // 温度的整数部分
-    uint8_t temp_deci;   // 温度的小数部分
-    uint8_t check_sum;   // 校验和
-} DHT11_Data_TypeDef;
 
 
 

@@ -203,12 +203,14 @@ void Time_Show_f( void*arg ) //时间显示任务任务
 
 void DTH11_Work_f(void*arg)
 {  
-    
+    TickType_t xLastWakeTime = xTaskGetTickCount(); //记录首次唤醒时刻,建立绝对时间基准网格
+    const TickType_t xPeriod = pdMS_TO_TICKS(2000); //2s 采样周期:DHT11 手册要求两次读取间隔≥1s,过频会读到未刷新的旧值
+
     /* 主循环 */
     while(1)
     {
-		DHT11_SCAN();     
-        vTaskDelay(100);		
+        DHT11_SCAN();     
+        vTaskDelayUntil(&xLastWakeTime, xPeriod);    //按绝对时间网格唤醒,补偿执行耗时,保证 2s 等间隔
     }
 }
 
