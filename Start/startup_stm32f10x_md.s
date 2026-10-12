@@ -41,7 +41,14 @@ __initial_sp
 ;   <o>  Heap Size (in Bytes) <0x0-0xFFFFFFFF:8>
 ; </h>
 
-Heap_Size       EQU     0x00000200
+; FreeRTOS variant: the C-library heap is not used in this project. All dynamic
+; memory goes through FreeRTOS heap_4 (ucHeap[] = 12 KB) and there is no
+; malloc/calloc/realloc/free call in the sources, so this 512 B is a leftover
+; from the bare-metal template -> set to 0 to reclaim it.
+; NOTE: restore a non-zero value if printf-to-stdout style features are added
+; later, because the ARM C library takes its stream buffers from here.
+
+Heap_Size       EQU     0x00000000
 
                 AREA    HEAP, NOINIT, READWRITE, ALIGN=3
 __heap_base

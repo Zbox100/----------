@@ -154,11 +154,11 @@ void blood_data_translate(void)
 	
 	//UsartPrintf(USART_DEBUG,"%d\r\n",(int)i);
 	//��ȡ��ֵ��ĺ�����  �������������Ϊ 
-	int s1_max_index = find_max_num_index(s1, 30);
-	int s2_max_index = find_max_num_index(s2, 30);
+	int s1_max_index = find_max_num_index(s1, 15);
+	int s2_max_index = find_max_num_index(s2, 15);
 //	UsartPrintf(USART_DEBUG,"%d\r\n",s1_max_index);
 //	UsartPrintf(USART_DEBUG,"%d\r\n",s2_max_index);
-	float Heart_Rate = 60.00 * ((100.0 * s1_max_index )/ 512.00)+20;
+	float Heart_Rate = 60.00 * ((100.0 * s1_max_index )/ 256.00)+20;
 	
 	g_blooddata.heart = Heart_Rate;
 	
