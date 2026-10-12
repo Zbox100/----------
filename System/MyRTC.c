@@ -21,6 +21,8 @@ void SetTime_w()
 		
     uint8_t key_count = 0; // 用于跟踪接收到的按键数量
     uint16_t wait;         // 等待上位机输入的超时计数(单位:1ms)
+    uint8_t rx_byte = 0;   // 从队列取出的原始字节
+    uint16_t data = 0;     // BCD 转码用,局部变量(原全局 data 已删除)
 
     while(1)
     {   
@@ -34,15 +36,20 @@ void SetTime_w()
             break; // 退出循环
         }
 				wait = 30000;
-				while((Flag_U == 0) && (--wait))
+				while((wait > 0) && (global_var != 1) && (xQueueReceive(UsartTimeHandler,&rx_byte,pdMS_TO_TICKS(1)) != pdTRUE))
 				{
-				    vTaskDelay(1);
+				    wait--;                  //队列接收带1ms超时,等效原来的 vTaskDelay(1)
 				}
-				if(Flag_U == 0)              //超时未收到数据:放弃本次时间设置并清标志,避免整机死等
+				if(global_var == 1)          //蓝牙发 0 的退出指令:立刻返回,不清标志,由 Time_Show_f 完成退出
+				{
+				    return;
+				}
+				if(wait == 0)                //超时未收到数据:放弃本次时间设置并清标志,避免整机死等
 				{
 				    global_var = 0;
 				    return;
 				}
+				data = rx_byte;              //把队列取到的字节交给下面的 BCD 转码
         // 根据接收到的数据更新时间
         switch(key_count)
         {
@@ -88,7 +95,6 @@ void SetTime_w()
         {
             key_count = 0; // 重置按键计数器
         }
-				Flag_U = 0;
         vTaskDelay(pdMS_TO_TICKS(500)); // 等待一段时间
     }
     MyRTC_SetTime(); // 设置RTC时间

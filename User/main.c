@@ -16,10 +16,7 @@
 #include "blood.h"                    // 血氧心率（生理参数）数据结构与处理模块头文件
 
 //全局变量
-int rxBuffer;
 int global_var = 0;
-uint8_t Flag_U;
-uint16_t data;
 
 // FreeRTOS核心头文件：提供FreeRTOS基础类型、宏定义与调度器核心支撑接口
 #include "FreeRTOS.h"
@@ -49,6 +46,7 @@ TaskHandle_t Start_MyTaskListHandler;
 TaskHandle_t Time_modification_fHandler;
 TaskHandle_t Key_GetNum_fHandler;
 TaskHandle_t beep_Work_fHandler;
+TaskHandle_t Usart_Rx_fHandler;
 ////////////////////队列实现///////////////////////////////////
 QueueHandle_t QueueGetHandler  =NULL;
 QueueHandle_t KeyGetHandler    =NULL;
@@ -56,6 +54,9 @@ QueueHandle_t KeyExitHandler   =NULL;
 QueueHandle_t ADX1345Handler   =NULL;
 QueueHandle_t DTH11Handler     =NULL;
 QueueHandle_t Max30102Handler  =NULL;
+QueueHandle_t UsartRxHandler   =NULL;   //USART1 ISR -> Usart_Rx_f
+QueueHandle_t UsartMenuHandler =NULL;   //Usart_Rx_f  -> Menu_handling_f
+QueueHandle_t UsartTimeHandler =NULL;   //Usart_Rx_f  -> SetTime_w
 
 void Adxl345_Work_f(void*arg)
 {	
@@ -177,8 +178,9 @@ void Time_Show_f( void*arg ) //时间显示任务任务
         SetTime_w();
         }
         
-        xQueueReceive(KeyExitHandler,&KeyExit_R,NULL);
-        if((KeyExit_R == 1)||(global_var==1))
+        KeyExit_R = 0;      //先清零:非阻塞接收失败时会保留旧值,清掉避免上一轮的 1 误触发退出
+        xQueueReceive(KeyExitHandler,&KeyExit_R,pdMS_TO_TICKS(50));
+        if((KeyExit_R == 1)||(global_var==1))   //global_var==1 是蓝牙发 0 的退出路径,SetTime_w 提前返回时靠它退出
         {taskENTER_CRITICAL();
         KeyExit_R = 0;global_var = 0;OLED_Clear();vTaskResume(Menu_handling_fHandler);vTaskResume(Key_GetNum_fHandler);vTaskSuspend(NULL);
         taskEXIT_CRITICAL();}
@@ -319,6 +321,41 @@ void Max30102_Show_f(void*arg)
    }
 }
 
+/* 串口接收分发任务:ISR 只把字节投进 UsartRxHandler,由本任务决定去向。
+   必须常驻运行 —— Show 页面下 Menu_handling_f 已挂起,退出指令只能靠本任务置 global_var */
+void Usart_Rx_f(void *arg)
+{
+    uint8_t ch;
+    while(1)
+    {
+        /* portMAX_DELAY 下本函数只会"取到数据"这一种返回:任务在此阻塞到队列非空为止,
+           不存在超时返回 pdFALSE 的分支,原先的 != pdTRUE / continue 恒不可达,故直接调用 */
+        xQueueReceive(UsartRxHandler,&ch,portMAX_DELAY);
+        if(ch == 0)                             //退出:任何语境下都优先,必须放在时间设置判断之前
+        {
+            OLED_Clear();
+            OLED_ShowString(2,5,"Exiting...");
+            global_var = 1;
+        }
+        else if(global_var == 2)                //时间设置进行中:字节原样转给 SetTime_w,不做菜单解码
+        {
+            xQueueSend(UsartTimeHandler,&ch,0);
+        }
+        else if(ch == 5)                        //进入时间修改
+        {
+            /* 这条指令本身也要排进时间队列:SetTime_w 的 case 0 会消费它并立刻打印输入提示。
+               与改造前一致(原 ISR 的 Flag_U/data 会被 SetTime_w 的首次等待直接取走),
+               否则提示要等到用户再发一个字节才出现,且那个字节会被 case 0 白白吃掉 */
+            xQueueSend(UsartTimeHandler,&ch,0);
+            global_var = 2;
+        }
+        else if((ch >= 1) && (ch <= 4))          //菜单功能选择
+        {
+            xQueueSend(UsartMenuHandler,&ch,0);
+        }
+    }
+}
+
 void Menu_handling_f( void * arg )   //菜单处理任务
 {
     UsartPrintf(USART1, "  Please Input num of Func \r\n");
@@ -329,6 +366,7 @@ void Menu_handling_f( void * arg )   //菜单处理任务
     uint8_t operate = 0;
     uint8_t menu_index = 0;
     uint8_t i = 1;
+    uint8_t bt_cmd = 0xFF;              //本轮的蓝牙指令,0xFF 表示无
     while(1)
     {    
     OLED_ShowString(1, 1, "Enter menu num:");
@@ -339,7 +377,9 @@ void Menu_handling_f( void * arg )   //菜单处理任务
     xQueueReceive(KeyGetHandler,&operate,portMAX_DELAY); 
       
     /*蓝牙功能选择*/	
-        switch(rxBuffer)
+        bt_cmd = 0xFF;                      //非阻塞取一条蓝牙指令,取不到则保持0xFF走default
+        xQueueReceive(UsartMenuHandler,&bt_cmd,pdMS_TO_TICKS(50));
+        switch(bt_cmd)
     { 
         /* 执行当前功能，再次按下退出功能 */
         case 1 : 
@@ -458,28 +498,56 @@ void beep_Work_f(void* arg)
     }    															
 }
 
+/* ---------- 任务创建的统一入口 ---------- */
+static uint8_t Task_Fail_Cnt = 0;   //堆不足导致创建失败的任务数
+
+/* 全部任务都经这里创建,失败时累加计数,避免十几份重复的 if。
+   失败原因必然是同一个(堆耗尽),所以通报只报个数,不报名字 */
+static void Create_Task(TaskFunction_t fn, char *name, uint16_t stack, UBaseType_t prio, TaskHandle_t *handle)
+{
+    if(xTaskCreate(fn, name, stack, NULL, prio, handle) != pdPASS)
+    {
+        Task_Fail_Cnt++;
+    }
+}
+
 void Start_MyTaskList(void *arg)  //任务启动任务
 {
     taskENTER_CRITICAL();
-    xTaskCreate(Time_Work_f,"Time_Work_f",128,NULL ,4,&Time_Work_fHandler);
-    xTaskCreate(Time_Show_f,"Time_Show_f",128,NULL ,4,&Time_Show_fHandler);
-    xTaskCreate(Adxl345_Work_f,"Adxl345_Work_f",192,NULL ,4,&Adxl345_Work_fHandler);   //192字:周期实测打印已移除,恢复原值;若以后本任务内要调UsartPrintf,必须加到256
-    xTaskCreate(Adxl345_Show_f,"Adxl345_Show_f",128,NULL ,4,&Adxl345_Show_fHandler);
-    xTaskCreate(DTH11_Work_f,"DTH11_Work_f",224,NULL ,4,&DTH11_Work_fHandler);
-    xTaskCreate(DTH11_Show_f,"DTH11_Show_f",224,NULL ,4,&DTH11_Show_fHandler);
-    xTaskCreate(Max30102_Work_f,"Max30102_Work_f",224,NULL ,4,&Max30102_Work_fHandler);
-    xTaskCreate(Max30102_Show_f,"Max30102_Show_f",224,NULL ,4,&Max30102_Show_fHandler);
+    Create_Task(Time_Work_f,     "Time_Work_f",     128, 4, &Time_Work_fHandler);
+    Create_Task(Time_Show_f,     "Time_Show_f",     128, 4, &Time_Show_fHandler);
+    Create_Task(Adxl345_Work_f,  "Adxl345_Work_f",  192, 4, &Adxl345_Work_fHandler);  //192字:周期性打印已移除,恢复原值;若以后本任务内要调UsartPrintf,必须加到256
+    Create_Task(Adxl345_Show_f,  "Adxl345_Show_f",  128, 4, &Adxl345_Show_fHandler);
+    Create_Task(DTH11_Work_f,    "DTH11_Work_f",    224, 4, &DTH11_Work_fHandler);
+    Create_Task(DTH11_Show_f,    "DTH11_Show_f",    224, 4, &DTH11_Show_fHandler);
+    Create_Task(Max30102_Work_f, "Max30102_Work_f", 224, 4, &Max30102_Work_fHandler);
+    Create_Task(Max30102_Show_f, "Max30102_Show_f", 224, 4, &Max30102_Show_fHandler);
+
+    Create_Task(Menu_handling_f, "Menu_handling_f", 256, 4, &Menu_handling_fHandler);
+    Create_Task(Key_GetNum_f,    "Key_GetNum_f",    128, 4, &Key_GetNum_fHandler);
+    Create_Task(beep_Work_f,     "beep_Work_f",     128, 4, &beep_Work_fHandler);
+    Create_Task(Usart_Rx_f,      "Usart_Rx_f",      128, 3, &Usart_Rx_fHandler);
+
+    if(Task_Fail_Cnt > 0)
+    {
+        /* 堆不足:报出失败个数即可,原因必然是同一个。
+           本任务只有 128 字栈,这里禁止调用 UsartPrintf(它有 256B 栈上缓冲) */
+        OLED_Clear();
+        OLED_ShowString(1,1,"TASK CREATE");
+        OLED_ShowNum(2,1,Task_Fail_Cnt,1);
+        OLED_ShowString(2,3,"FAILED");
+    }
     
-    xTaskCreate(Menu_handling_f,"Menu_handling_f",256,NULL ,4,&Menu_handling_fHandler);
-    xTaskCreate(Key_GetNum_f,"Key_GetNum_f",128,NULL ,4,&Key_GetNum_fHandler);
-    xTaskCreate(beep_Work_f,"beep_Work_f",128,NULL ,4,&beep_Work_fHandler);
     
-    
-    vTaskSuspend(Time_Show_fHandler);
-    vTaskSuspend(Adxl345_Show_fHandler);
-    vTaskSuspend(DTH11_Show_fHandler);
-    vTaskSuspend(Max30102_Show_fHandler);
-    vTaskSuspend(beep_Work_fHandler);
+    /* 逐个判空再挂起:创建失败的句柄会被 FreeRTOS 置为 NULL,
+       而 vTaskSuspend(NULL) 的语义是"挂起调用者自身"——这里就是本任务,
+       一旦踩中会把自己挂起,导致后面的挂起全部落空、栈与TCB永久泄漏。
+       传 NULL 给 vTaskDelete 才是删除自身,两者语义不同,必须区分 */
+    if(Time_Show_fHandler     != NULL) vTaskSuspend(Time_Show_fHandler);
+    if(Adxl345_Show_fHandler  != NULL) vTaskSuspend(Adxl345_Show_fHandler);
+    if(DTH11_Show_fHandler    != NULL) vTaskSuspend(DTH11_Show_fHandler);
+    if(Max30102_Show_fHandler != NULL) vTaskSuspend(Max30102_Show_fHandler);
+    if(beep_Work_fHandler     != NULL) vTaskSuspend(beep_Work_fHandler);
 
     taskEXIT_CRITICAL();
     vTaskDelete(NULL);
@@ -500,8 +568,24 @@ int main(void)
     OLED_Init();                                    // 初始化OLED显示器
     MyRTC_Init();                                   // 初始化实时时钟
     Key_Init();                                     // 初始化按键
-    Usart1_Init(115200);                            // 初始化USART1串口，自定义的输入输出函数
-    EXTI8_Config();                                 // 配置外部中断   
+    /* 串口接收队列必须在 Usart1_Init(使能RXNE中断)之前创建:
+       否则中断先到、队列还是NULL,ISR里的 xQueueSendFromISR 会踩空指针 */
+    UsartRxHandler   = xQueueCreate(8, sizeof(uint8_t));
+    UsartMenuHandler = xQueueCreate(4, sizeof(uint8_t));
+    UsartTimeHandler = xQueueCreate(8, sizeof(uint8_t));
+    if((UsartRxHandler == NULL) || (UsartMenuHandler == NULL) || (UsartTimeHandler == NULL))
+    {
+        /* 此处 OLED_Init 已执行,必须先把失败显示出来再停机:
+           直接 return 会让 main 静默退出,现场只剩一块没有任何提示的屏,无从判断是堆不够。
+           字符串拆两行是因为 OLED 一行只有 16 列,"QUEUE CREATE FAIL" 17 字符会被截断 */
+        OLED_Clear();
+        OLED_ShowString(1,1,"QUEUE CREATE");
+        OLED_ShowString(2,1,"FAIL");
+        while(1);                                   // 堆不足:停机保留现场,不启动调度器
+    }
+
+    Usart1_Init(115200);                            // 初始化USART1串口，自定义的输入输出函数   
+    EXTI8_Config();                                 // 配置外部中断
     Init_ADXL345();
     DHT11_GPIO_Config();
     IIC_GPIO_INIT();                                // I2C GPIO初始化
@@ -517,14 +601,28 @@ int main(void)
     KeyExitHandler  = xQueueCreate(1, sizeof(uint8_t)  * 1); 
     ADX1345Handler  = xQueueCreate(1, sizeof(uint32_t)  * 1); 
     DTH11Handler    = xQueueCreate(1, sizeof(DHT11_Data_TypeDef)  * 1); 
-    Max30102Handler = xQueueCreate(1, sizeof(BloodData)  * 1); 
+    Max30102Handler = xQueueCreate(1, sizeof(BloodData)  * 1);
+    if((QueueGetHandler == NULL) || (KeyGetHandler == NULL) || (KeyExitHandler == NULL) ||
+       (ADX1345Handler == NULL) || (DTH11Handler == NULL) || (Max30102Handler == NULL))
+    {
+        /* 与上面三条串口队列同样的处理:OLED 已可用,先显示再停机,
+           否则这些队列为 NULL 时各任务会在 xQueueReceive/xQueueSend 上踩空指针 */
+        OLED_Clear();
+        OLED_ShowString(1,1,"QUEUE CREATE");
+        OLED_ShowString(2,1,"FAIL");
+        while(1);
+    }
     
     xReceive = xTaskCreate(Start_MyTaskList,"Start_MyTaskList",128,NULL ,2,&Start_MyTaskListHandler);
-    /* 启动任务调度 */           
-   if(pdPASS == xReceive)
+    if(pdPASS != xReceive)
+    {
+        /* 启动任务创建失败同样要看得见:原来这里 return 会静默退出,现场看不出原因 */
+        OLED_Clear();
+        OLED_ShowString(1,1,"TASK CREATE");
+        OLED_ShowString(2,1,"FAIL");
+        while(1);
+    }
     vTaskStartScheduler();   /* 启动任务，开启调度 */
-   else
-    return -1;   
     while(1);
     
 }

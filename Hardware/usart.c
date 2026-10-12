@@ -55,8 +55,8 @@
 	
 	nvicInitStruct.NVIC_IRQChannel = USART1_IRQn;
 	nvicInitStruct.NVIC_IRQChannelCmd = ENABLE;
-	nvicInitStruct.NVIC_IRQChannelPreemptionPriority = 0;
-	nvicInitStruct.NVIC_IRQChannelSubPriority = 2;
+	nvicInitStruct.NVIC_IRQChannelPreemptionPriority = 5;		//必须>=5:分组4下与configMAX_SYSCALL_INTERRUPT_PRIORITY(0x50)一致,否则ISR调用FromISR会触发断言
+	nvicInitStruct.NVIC_IRQChannelSubPriority = 0;
 	NVIC_Init(&nvicInitStruct);
 
 }
@@ -138,34 +138,23 @@ void UsartPrintf(USART_TypeDef *USARTx, char *fmt,...)
 
 void USART1_IRQHandler(void)
 {
-        
-    /* ?????PA10????????,??????????/????,
-       ?????????,???????0x00??(??????"Exiting...") */
+    /* 溢出/帧/噪声/校验错误:读DR清标志后直接丢弃,不做业务处理 */
     if((USART_GetFlagStatus(USART1, USART_FLAG_ORE) != RESET) ||
        (USART_GetFlagStatus(USART1, USART_FLAG_FE)  != RESET) ||
        (USART_GetFlagStatus(USART1, USART_FLAG_NE)  != RESET) ||
        (USART_GetFlagStatus(USART1, USART_FLAG_PE)  != RESET))
     {
-        (void)USART_ReceiveData(USART1);               //?DR??ORE/FE/NE/PE,???????
+        (void)USART_ReceiveData(USART1);
         return;
     }
     if(USART_GetITStatus(USART1, USART_IT_RXNE) != RESET)
-    {   
-		Flag_U = 1;
-        data = USART_ReceiveData(USART1); 
-        
-        rxBuffer = data;
-        if(rxBuffer ==0 )
-        {
-        OLED_Clear();
-        OLED_ShowString(2,5,"Exiting...");
-        global_var = 1;
-        }
-        else if(rxBuffer == 5)
-        {global_var = 2;}		
+    {
+        BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+        uint8_t ch = (uint8_t)USART_ReceiveData(USART1);
+
+        /* ISR 只把字节投进队列,去向(菜单/时间设置/退出)交由 Usart_Rx_f 判断 */
+        xQueueSendFromISR(UsartRxHandler, &ch, &xHigherPriorityTaskWoken);
+        portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
     }
-        USART_ClearITPendingBit(USART1, USART_IT_RXNE);
+    USART_ClearITPendingBit(USART1, USART_IT_RXNE);
 }
-
-
-

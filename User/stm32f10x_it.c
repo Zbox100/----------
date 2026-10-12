@@ -183,6 +183,10 @@ void EXTI9_5_IRQHandler(void)
     
     xQueueSendFromISR(KeyExitHandler,&KeyExit,NULL);
 
+    /* 与蓝牙 0 统一:物理退出键也置全局退出请求。时间设置中的 SetTime_w 只认
+       global_var==1,看不到 KeyExitHandler 这条队列,补上这句才能即时退出 */
+    global_var = 1;
+
     EXTI_ClearITPendingBit(EXTI_Line8);
     
 }

@@ -174,8 +174,11 @@
 
 //系统所有总的堆大小
 /*原为10*1024:12个任务的栈合计约8.5KB,再加TCB与队列后余量过紧。xTaskCreate一旦返回NULL,
-  Start_MyTaskList里的vTaskSuspend(NULL)会把自己挂起,后续任务全部创建失败,现象是整机没反应。故留出余量*/
-#define configTOTAL_HEAP_SIZE                       ( ( size_t ) ( 11 * 1024 ) )
+  Start_MyTaskList里的vTaskSuspend(NULL)会把自己挂起,后续任务全部创建失败,现象是整机没反应。故留出余量
+  11*1024 仍然不够:新增串口分发任务 Usart_Rx_f(128字栈+TCB)与3条接收队列,需求约890B,
+  而11KB下余量只有400~500B,xTaskCreate(Usart_Rx_f)静默失败(未开configUSE_MALLOC_FAILED_HOOK),
+  现象是蓝牙1~4不切菜单、0不退出。实测RAM:非堆占用7336B,12KB堆后总RW=19624B,仍在20480B以内*/
+#define configTOTAL_HEAP_SIZE                       ( ( size_t ) ( 12 * 1024 ) )
 
 /*默认情况下，FreeRTOS 堆由 FreeRTOS 声明 并由链接器放置在存储器中。 
  *将 configAPPLICATION_ALLOCATED_HEAP 设置为 1，
