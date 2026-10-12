@@ -516,7 +516,7 @@ int main(void)
     /*任务运行部分，使用动态创建任务*/
         
     
-    QueueGetHandler = xQueueCreate(6, sizeof(uint16_t) * 6);
+    QueueGetHandler = xQueueCreate(1, sizeof(uint16_t) * 6);
     KeyGetHandler   = xQueueCreate(1, sizeof(uint8_t)  * 1);
     KeyExitHandler  = xQueueCreate(1, sizeof(uint8_t)  * 1); 
     ADX1345Handler  = xQueueCreate(1, sizeof(uint32_t)  * 1); 
