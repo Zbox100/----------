@@ -231,16 +231,21 @@ void DTH11_Show_f(void*arg)
             vTaskSuspend(NULL);
             taskEXIT_CRITICAL();
         }
-        OLED_Clear();
-        xQueueReceive(DTH11Handler,&DHT11_Data_R,portMAX_DELAY);
-        OLED_ShowString(1, 1, "***************");
-        OLED_ShowString(2,3,"Humi:");
-        OLED_ShowString(3,3,"Temp:");
-        OLED_ShowNum(2,9,DHT11_Data_R.humi_int,2);
-        OLED_ShowNum(2,12,DHT11_Data_R.humi_deci,2);
-        OLED_ShowNum(3,9,DHT11_Data_R.temp_int,2);
-        OLED_ShowNum(3,12,DHT11_Data_R.temp_deci,2);
-        OLED_ShowString(4, 1, "***************");
+        /* 同 Max30102_Show_f:DHT11_SCAN() 只在读成功时才往队列里送数据,模块未连接时
+           队列永远为空,原 portMAX_DELAY 死等会让本任务无法响应退出请求,页面卡在"Exiting..."
+           改为带超时接收,超时后回到循环顶部重新判断退出条件 */
+        if(xQueueReceive(DTH11Handler,&DHT11_Data_R,pdMS_TO_TICKS(200)) == pdTRUE)
+        {
+            OLED_Clear();
+            OLED_ShowString(1, 1, "***************");
+            OLED_ShowString(2,3,"Humi:");
+            OLED_ShowString(3,3,"Temp:");
+            OLED_ShowNum(2,9,DHT11_Data_R.humi_int,2);
+            OLED_ShowNum(2,12,DHT11_Data_R.humi_deci,2);
+            OLED_ShowNum(3,9,DHT11_Data_R.temp_int,2);
+            OLED_ShowNum(3,12,DHT11_Data_R.temp_deci,2);
+            OLED_ShowString(4, 1, "***************");
+        }
         vTaskDelay(100);
     }
 
@@ -249,16 +254,32 @@ void DTH11_Show_f(void*arg)
 
 void Max30102_Work_f(void*arg)
 {
+    uint8_t online = 0;                              //模块在位标志:PART_ID校验通过才置1
 
     while(1)
     {   
+        /* 在位检测:PART_ID(0xFF)正常应读回0x15。软件I2C读不到器件时会应答失败返回0,
+           模块未连接时直接跳过本轮采样,避免进入等待INT引脚/FIFO的循环把调度器挂死 */
+        online = (IIC_Read_Byte(MAX30102_Device_address, REG_PART_ID) == 0x15) ? 1 : 0;
+        if(online == 0)
+        {
+            vTaskDelay(500);                         //模块不在位:每500ms复查一次,期间让出CPU
+            continue;
+        }
+
+        /* 预热:连续读取128次FIFO。原实现 while(INT==0) 为无超时死等,
+           模块异常或INT引脚浮空时会永久占用CPU(协作式调度下整机停摆);
+           现给每轮加等待上限并每轮让出1ms */
         for(int i = 0;i < 128;i++) 
         {   
-            while(MAX30102_INTPin_Read()==0)
+            uint16_t wait = 50;                      //单个样本最多连续读50次(MAX30102配置为50Hz,20ms出一个样本)
+            while((MAX30102_INTPin_Read()==0)&&(wait > 0))
             {          
                 // 读取FIFO               
                 max30102_read_fifo();
+                wait--;
             }
+            vTaskDelay(1);                           //让出CPU 1ms,保证其它任务(含OLED绘制)能得到运行
         }
         blood_Loop();        // 获取血氧和心率
         vTaskDelay(100);
@@ -282,14 +303,21 @@ void Max30102_Show_f(void*arg)
             vTaskSuspend(NULL);
             taskEXIT_CRITICAL();
         }  
-    xQueueReceive(Max30102Handler,&g_blooddata,portMAX_DELAY);
-    OLED_Clear();
-    OLED_ShowString(1, 1, "***************");
-    OLED_ShowString(2,4,"SpO2: ");
-	OLED_ShowNum(2,9,g_blooddata.SpO2,3);
-    OLED_ShowString(3,4,"Heart:");
-	OLED_ShowNum(3,10,g_blooddata.heart,3);
-    OLED_ShowString(4, 1, "***************");
+    /* 原为 xQueueReceive(...,portMAX_DELAY) 死等:模块未连接时采集任务不会往队列里送数据
+       (Max30102_Work_f 在位检测不通过就直接跳过采样),本任务会永远阻塞在这里,
+       既刷不出界面,也回不到循环顶部判断退出条件(KeyExit_R/global_var==1);
+       而退出键中断已经先把屏幕清掉并写上"Exiting...",于是页面卡死在这行字上。
+       改为带超时接收:超时也会回到循环顶部重新判断退出条件 */
+    if(xQueueReceive(Max30102Handler,&g_blooddata,pdMS_TO_TICKS(200)) == pdTRUE)
+    {
+        OLED_Clear();
+        OLED_ShowString(1, 1, "***************");
+        OLED_ShowString(2,4,"SpO2: ");
+        OLED_ShowNum(2,9,g_blooddata.SpO2,3);
+        OLED_ShowString(3,4,"Heart:");
+        OLED_ShowNum(3,10,g_blooddata.heart,3);
+        OLED_ShowString(4, 1, "***************");
+    }
     
     vTaskDelay(100);
    }

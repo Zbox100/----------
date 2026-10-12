@@ -14,7 +14,7 @@ void MAX30102_GPIO(void)
 {	
 	RCC_APB2PeriphClockCmd(MAX30102_INTPin_CLK,ENABLE);
 	GPIO_InitTypeDef GPIO_InitStruct;
-	GPIO_InitStruct.GPIO_Mode		=	GPIO_Mode_IN_FLOATING;
+	GPIO_InitStruct.GPIO_Mode		=	GPIO_Mode_IPU;
 	GPIO_InitStruct.GPIO_Pin		=	MAX30102_INTPin_Pin;
 	GPIO_Init(MAX30102_INTPin_PORT,&GPIO_InitStruct);
 	

@@ -1,6 +1,8 @@
 #include "stm32f10x.h"                  // Device header
 #include "Delay.h"
 #include "Oled.h"
+#include "FreeRTOS.h"                   // 引入vTaskDelay/pdMS_TO_TICKS
+#include "task.h"
 #define  Enter 1
 #define  Up    2
 #define  Down  3
@@ -90,28 +92,41 @@ void EXTI8_Config(void)
 uint8_t Key_GetNum(void)
 {
     uint16_t KeyNum = 6;
+    uint16_t Wait;                                          //等松手的超时计数(单位:10ms)
 	
 	if (GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_13) == 1)			
 	{
-		Delay_fnms(20);
-		while (GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_13) == 1);	
-		Delay_fnms(20);
+		vTaskDelay(pdMS_TO_TICKS(20));                      //消抖延时:改用阻塞延时让出CPU(原Delay_fnms为纯忙等)
+		Wait = 500;                                         //最多再等5s
+		while ((GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_13) == 1) && (--Wait))
+		{
+			vTaskDelay(pdMS_TO_TICKS(10));                  //每10ms让出CPU;超时强制放行,避免长按把系统卡死
+		}
+		vTaskDelay(pdMS_TO_TICKS(20));
 		KeyNum = Enter;												
 	}
 	
 	if (GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_14) == 1)			
 	{
-		Delay_fnms(20);
-		while (GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_14) == 1);	
-		Delay_fnms(20);
+		vTaskDelay(pdMS_TO_TICKS(20));                      //消抖延时:改用阻塞延时让出CPU
+		Wait = 500;                                         //最多再等5s
+		while ((GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_14) == 1) && (--Wait))
+		{
+			vTaskDelay(pdMS_TO_TICKS(10));                  //每10ms让出CPU;超时强制放行
+		}
+		vTaskDelay(pdMS_TO_TICKS(20));
 		KeyNum = Up;												
 	}
 	
     if (GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_15) == 1)			
 	{
-		Delay_fnms(20);
-		while (GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_15) == 1);	
-		Delay_fnms(20);
+		vTaskDelay(pdMS_TO_TICKS(20));                      //消抖延时:改用阻塞延时让出CPU
+		Wait = 500;                                         //最多再等5s
+		while ((GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_15) == 1) && (--Wait))
+		{
+			vTaskDelay(pdMS_TO_TICKS(10));                  //每10ms让出CPU;超时强制放行
+		}
+		vTaskDelay(pdMS_TO_TICKS(20));
 		KeyNum = Down;												
 	}
 	return KeyNum;			

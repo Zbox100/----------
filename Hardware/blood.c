@@ -11,6 +11,7 @@
 
 #include "FreeRTOS.h"
 #include "queue.h"
+#include "task.h"                         //??vTaskDelay
 
 extern QueueHandle_t Max30102Handler;
 uint16_t g_fft_index = 0;         	 	//fftï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Â±ï¿½
@@ -33,24 +34,32 @@ BloodData g_blooddata = {0};					//ÑªÒºï¿½ï¿½ï¿½Ý´æ´¢
 //ÑªÒºï¿½ï¿½ï¿½ï¿½ï¿½Ï¢ï¿½ï¿½ï¿½ï¿½
 void blood_data_update(void)
 {
-	//ï¿½ï¿½Ö¾Î»ï¿½ï¿½Ê¹ï¿½ï¿½Ê± ï¿½ï¿½È¡FIFO
+	uint16_t wait_ms = 0;                 //Á¬ÐøµÈ´ýÐÂÑù±¾µÄÊ±³¤(ms),ÓÃÓÚ³¬Ê±ÍË³ö
+	//±êÖ¾Î»£¬Ê¹ÓÃÊ± £¬¶ÁÈ¡FIFO
 	g_fft_index=0;
 	while(g_fft_index < FFT_N)
 	{
-		while(MAX30102_INTPin_Read()==0)
+		if(MAX30102_INTPin_Read()!=0)      //INTÎª¸ß:FIFOÔÝÎÞÐÂÊý¾Ý
 		{
-			//ï¿½ï¿½È¡FIFO
-			max30102_read_fifo();  //read from MAX30102 FIFO2
-			//ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ð´ï¿½ï¿½fftï¿½ï¿½ï¿½ë²¢ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
-			if(g_fft_index < FFT_N)
+			if(wait_ms >= 2000)            //Á¬Ðø2sÃ»ÓÐÐÂÑù±¾:ÅÐ¶¨Ä£¿éÒì³£,·ÅÆú±¾´Î²É¼¯
 			{
-				//ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ð´ï¿½ï¿½fftï¿½ï¿½ï¿½ë²¢ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
-				s1[g_fft_index].real = fifo_red;
-				s1[g_fft_index].imag= 0;
-				s2[g_fft_index].real = fifo_ir;
-				s2[g_fft_index].imag= 0;
-				g_fft_index++;
+				break;
 			}
+			vTaskDelay(1);                 //ÈÃ³öCPU 1ms,±ÜÃâÎÞÑÓÊ±Ã¦µÈ°ÑÐ­×÷Ê½µ÷¶ÈÆ÷¹ÒËÀ
+			wait_ms++;
+			continue;
+		}
+		wait_ms = 0;                       //ÓÐÐÂÊý¾Ý,Çå¿ÕµÈ´ý¼ÆÊ±
+		//¶ÁÈ¡FIFO
+		max30102_read_fifo();              //read from MAX30102 FIFO2
+		//²ÉÑùºóÐ´ÈëfftÊäÈë²¢µÝÔöÏÂ±ê
+		if(g_fft_index < FFT_N)
+		{
+			s1[g_fft_index].real = fifo_red;
+			s1[g_fft_index].imag= 0;
+			s2[g_fft_index].real = fifo_ir;
+			s2[g_fft_index].imag= 0;
+			g_fft_index++;
 		}
 	}
 }

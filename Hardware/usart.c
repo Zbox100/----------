@@ -36,7 +36,7 @@
 	GPIO_Init(GPIOA, &gpioInitStruct);
 	
 	//PA10	RXD
-	gpioInitStruct.GPIO_Mode = GPIO_Mode_IN_FLOATING;
+	gpioInitStruct.GPIO_Mode = GPIO_Mode_IPU         ;
 	gpioInitStruct.GPIO_Pin = GPIO_Pin_10;
 	gpioInitStruct.GPIO_Speed = GPIO_Speed_50MHz;
 	GPIO_Init(GPIOA, &gpioInitStruct);
@@ -139,6 +139,16 @@ void UsartPrintf(USART_TypeDef *USARTx, char *fmt,...)
 void USART1_IRQHandler(void)
 {
         
+    /* ?????PA10????????,??????????/????,
+       ?????????,???????0x00??(??????"Exiting...") */
+    if((USART_GetFlagStatus(USART1, USART_FLAG_ORE) != RESET) ||
+       (USART_GetFlagStatus(USART1, USART_FLAG_FE)  != RESET) ||
+       (USART_GetFlagStatus(USART1, USART_FLAG_NE)  != RESET) ||
+       (USART_GetFlagStatus(USART1, USART_FLAG_PE)  != RESET))
+    {
+        (void)USART_ReceiveData(USART1);               //?DR??ORE/FE/NE/PE,???????
+        return;
+    }
     if(USART_GetITStatus(USART1, USART_IT_RXNE) != RESET)
     {   
 		Flag_U = 1;
