@@ -174,11 +174,7 @@ void Time_Show_f( void*arg ) //时间显示任务任务
     {
         if(global_var==2)
         {
-        vTaskSuspendAll();
-        taskENTER_CRITICAL();
         SetTime_w();
-        taskEXIT_CRITICAL();
-        xTaskResumeAll();
         }
         
         xQueueReceive(KeyExitHandler,&KeyExit_R,NULL);

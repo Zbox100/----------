@@ -20,6 +20,7 @@ void SetTime_w()
 {
 		
     uint8_t key_count = 0; // 用于跟踪接收到的按键数量
+    uint16_t wait;         // 等待上位机输入的超时计数(单位:1ms)
 
     while(1)
     {   
@@ -28,11 +29,20 @@ void SetTime_w()
         {
 						OLED_ShowString(4,5,"Exiting...");
 						UsartPrintf(USART_DEBUG,"  The modification was successful!\r\n");
-						Delay_fnms(500); // 等待一段时间
+						vTaskDelay(pdMS_TO_TICKS(500)); // 等待一段时间
 						OLED_ShowString(4,5,"          ");
             break; // 退出循环
         }
-				while(Flag_U == 0);
+				wait = 30000;
+				while((Flag_U == 0) && (--wait))
+				{
+				    vTaskDelay(1);
+				}
+				if(Flag_U == 0)              //超时未收到数据:放弃本次时间设置并清标志,避免整机死等
+				{
+				    global_var = 0;
+				    return;
+				}
         // 根据接收到的数据更新时间
         switch(key_count)
         {
@@ -79,7 +89,7 @@ void SetTime_w()
             key_count = 0; // 重置按键计数器
         }
 				Flag_U = 0;
-        Delay_fnms(500); // 等待一段时间
+        vTaskDelay(pdMS_TO_TICKS(500)); // 等待一段时间
     }
     MyRTC_SetTime(); // 设置RTC时间
 		
@@ -106,7 +116,7 @@ void MyRTC_Init(void)
 															//if成立则执行第一次的RTC配置
 	{
 		RCC_LSEConfig(RCC_LSE_ON);							//开启LSE时钟
-		while (RCC_GetFlagStatus(RCC_FLAG_LSERDY) != SET);	//等待LSE准备就绪
+		{ uint32_t lse_tout = 0x2000000; while((RCC_GetFlagStatus(RCC_FLAG_LSERDY) != SET) && (--lse_tout)); }	//LSE起振等待加超时上限:原无超时死等会在晶振故障时把初始化永久卡死
 		
 		RCC_RTCCLKConfig(RCC_RTCCLKSource_LSE);				//选择RTCCLK来源为LSE
 		RCC_RTCCLKCmd(ENABLE);								//RTCCLK使能

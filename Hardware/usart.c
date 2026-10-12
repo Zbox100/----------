@@ -106,7 +106,7 @@ void Usart_SendString(USART_TypeDef *USARTx, unsigned char *str, unsigned short 
 void UsartPrintf(USART_TypeDef *USARTx, char *fmt,...)
 {
 
-	unsigned char UsartPrintfBuf[256];
+	static unsigned char UsartPrintfBuf[256];
 	va_list ap;
 	unsigned char *pStr = UsartPrintfBuf;
 	
