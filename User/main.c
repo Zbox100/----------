@@ -71,10 +71,30 @@ void Adxl345_Work_f(void*arg)
         TickType_t lastStepTick = 0;                   //上一次计步的时刻(tick)
         TickType_t xLastWakeTime = xTaskGetTickCount(); //记录首次唤醒时刻,建立绝对时间基准网格
         const TickType_t xPeriod = pdMS_TO_TICKS(50);   //50ms 精确采样周期
+        // TickType_t t_last = 0;                          //上一次循环起始的tick
+        // uint32_t tick_sum = 0;                          //累计周期(tick)
+        // uint16_t cnt = 0;                               //累计循环次数
 
 	while(1)
 	{
+        // TickType_t t_now;
         vTaskDelayUntil(&xLastWakeTime, xPeriod);       //按绝对时间网格唤醒,补偿执行耗时,保证 50ms 等间隔
+
+        /*周期实测(已验证,故停用):记录相邻两次唤醒的tick差,累加100次再打印一次。
+          每轮都打印会显著拉长被测周期,所以必须攒批输出。
+          实测结果:5次输出4次50ms+1次49ms(±1 tick量化),无丢拍,周期正常 */
+        // t_now = xTaskGetTickCount();
+        // if(t_last != 0)                                 //首轮没有可比对象,跳过
+        // {
+        //     tick_sum += (t_now - t_last);               //tick是32位无符号,相减自然处理回绕
+        //     if(++cnt >= 100)
+        //     {
+        //         UsartPrintf(USART1, "period avg=%u ms\r\n", tick_sum / 100);
+        //         tick_sum = 0;
+        //         cnt = 0;
+        //     }
+        // }
+        // t_last = t_now;
 
         ReadData_x();  						            //三轴检测函数
         mag = sqrtf(temp_X*temp_X + temp_Y*temp_Y + temp_Z*temp_Z);  //三轴合加速度,对握持方向不敏感
@@ -419,7 +439,7 @@ void Start_MyTaskList(void *arg)  //任务启动任务
     taskENTER_CRITICAL();
     xTaskCreate(Time_Work_f,"Time_Work_f",128,NULL ,4,&Time_Work_fHandler);
     xTaskCreate(Time_Show_f,"Time_Show_f",128,NULL ,4,&Time_Show_fHandler);
-    xTaskCreate(Adxl345_Work_f,"Adxl345_Work_f",192,NULL ,4,&Adxl345_Work_fHandler);
+    xTaskCreate(Adxl345_Work_f,"Adxl345_Work_f",192,NULL ,4,&Adxl345_Work_fHandler);   //192字:周期实测打印已移除,恢复原值;若以后本任务内要调UsartPrintf,必须加到256
     xTaskCreate(Adxl345_Show_f,"Adxl345_Show_f",128,NULL ,4,&Adxl345_Show_fHandler);
     xTaskCreate(DTH11_Work_f,"DTH11_Work_f",224,NULL ,4,&DTH11_Work_fHandler);
     xTaskCreate(DTH11_Show_f,"DTH11_Show_f",224,NULL ,4,&DTH11_Show_fHandler);

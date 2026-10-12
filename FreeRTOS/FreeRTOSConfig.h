@@ -173,7 +173,9 @@
 #define configSUPPORT_DYNAMIC_ALLOCATION            1
 
 //系统所有总的堆大小
-#define configTOTAL_HEAP_SIZE                       ( ( size_t ) ( 10 * 1024 ) )
+/*原为10*1024:12个任务的栈合计约8.5KB,再加TCB与队列后余量过紧。xTaskCreate一旦返回NULL,
+  Start_MyTaskList里的vTaskSuspend(NULL)会把自己挂起,后续任务全部创建失败,现象是整机没反应。故留出余量*/
+#define configTOTAL_HEAP_SIZE                       ( ( size_t ) ( 11 * 1024 ) )
 
 /*默认情况下，FreeRTOS 堆由 FreeRTOS 声明 并由链接器放置在存储器中。 
  *将 configAPPLICATION_ALLOCATED_HEAP 设置为 1，
