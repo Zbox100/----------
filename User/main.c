@@ -212,6 +212,31 @@ void DTH11_Work_f(void*arg)
     while(1)
     {
         DHT11_SCAN();     
+        /* ---- 临时验收观测:idle 真实占比 ----
+           空闲占比 = 本窗口内空闲任务的累计运行时间 / 本窗口总时间。
+           两项都取本窗口的增量再相除,不受累计值回绕影响。
+           窗口即本任务的 2s 周期;验收完成后随 configGENERATE_RUN_TIME_STATS 一起移除 */
+        {
+            static uint32_t last_idle  = 0;
+            static uint32_t last_total = 0;
+            static uint8_t  first_win  = 1;
+            /* 运行时间统计的时基就是节拍计数(见 FreeRTOSConfig.h),
+               ulTaskGetIdleRunTimeCounter() 即空闲任务累计占用的节拍数。
+               该函数需 configGENERATE_RUN_TIME_STATS=1 且 INCLUDE_xTaskGetIdleTaskHandle=1 */
+            uint32_t now_idle  = (uint32_t)ulTaskGetIdleRunTimeCounter();
+            uint32_t now_total = (uint32_t)xTaskGetTickCount();
+            if(!first_win)   //首窗没有可相减的基准,跳过
+            {
+                uint32_t idle_delta  = now_idle  - last_idle;
+                uint32_t total_delta = now_total - last_total;
+                uint32_t pct = (total_delta != 0U)
+                             ? (uint32_t)(((uint64_t)idle_delta * 100U) / total_delta) : 0U;
+                UsartPrintf(USART1, "idle=%u%%\r\n", (unsigned int)pct);
+            }
+            first_win  = 0;
+            last_idle  = now_idle;
+            last_total = now_total;
+        }
         vTaskDelayUntil(&xLastWakeTime, xPeriod);    //按绝对时间网格唤醒,补偿执行耗时,保证 2s 等间隔
     }
 }
@@ -559,6 +584,7 @@ void Start_MyTaskList(void *arg)  //任务启动任务
     vTaskDelete(NULL);
 
 }
+
 int main(void)
 {
     BaseType_t xReceive = pdPASS;

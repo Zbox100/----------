@@ -235,7 +235,7 @@ void MyRTC_ReadTime(void)
 	MyRTC_Time[4] = time_date.tm_min;
 	MyRTC_Time[5] = time_date.tm_sec;
     
-    xQueueSend(QueueGetHandler,MyRTC_Time,portMAX_DELAY);
+    xQueueOverwrite(QueueGetHandler,MyRTC_Time);
     
 
     return;

@@ -241,8 +241,21 @@
           FreeRTOS与运行时间和任务状态收集有关的配置选项   
 **********************************************************************/
 
-//启用运行时间统计功能
-//#define configGENERATE_RUN_TIME_STATS           0    不使能
+/* 启用运行时间统计功能
+ * 置 1 后,tasks.c 会在每次任务切换时把 portGET_RUN_TIME_COUNTER_VALUE() 的差值
+ * 累加到各任务的 ulRunTimeCounter,于是能读出每个任务的真实 CPU 占用(用于验收空闲占比)。
+ * 注意:置 1 后 FreeRTOS.h 会强制检查下面两个端口宏必须都已定义,否则报 #error */
+#define configGENERATE_RUN_TIME_STATS           1
+
+/* 运行时间统计的时基:直接复用内核节拍计数( configTICK_RATE_HZ=1000,即 1ms 分辨率 )
+ *   portCONFIGURE_TIMER_FOR_RUN_TIME_STATS() 由内核在启动调度器前调用一次,这里无需额外配置,留空;
+ *   portGET_RUN_TIME_COUNTER_VALUE()         供 vTaskSwitchContext 读取当前节拍数。
+ * 为何不用 DWT->CYCCNT 做时基:CYCCNT 是 32 位,72MHz 下约 59.6s 就回绕一次,
+ * 而内核在计数回绕处会整段丢弃该次统计区间(见 tasks.c "if( ulTotalRunTime > ulTaskSwitchedInTime )"),
+ * 结果约每 30 个 2s 观测窗口就出现一次错误的偏低读数。
+ * 节拍计数是 32 位毫秒值,约 49.7 天才回绕,且 2s 窗口下 1ms 量化误差仅约 0.05%,够用且稳定 */
+#define portCONFIGURE_TIMER_FOR_RUN_TIME_STATS()
+#define portGET_RUN_TIME_COUNTER_VALUE()            xTaskGetTickCount()
 
 //启用可视化跟踪调试
 //#define configUSE_TRACE_FACILITY                0    设置为1会编译vTask等函数
@@ -335,7 +348,7 @@
 #define INCLUDE_xTaskGetCurrentTaskHandle       1
 #define INCLUDE_uxTaskGetStackHighWaterMark     0
 #define INCLUDE_uxTaskGetStackHighWaterMark2    0
-#define INCLUDE_xTaskGetIdleTaskHandle          0
+#define INCLUDE_xTaskGetIdleTaskHandle          1
 #define INCLUDE_eTaskGetState                   0
 #define INCLUDE_xEventGroupSetBitFromISR        1
 #define INCLUDE_xTimerPendFunctionCall          0

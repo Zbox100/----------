@@ -181,7 +181,7 @@ void blood_Loop(void)
     UsartPrintf(USART_DEBUG,"ָ������%3d",g_blooddata.heart);
     UsartPrintf(USART_DEBUG,"ָ��Ѫ��%0.2f",g_blooddata.SpO2);
     
-    xQueueSend(Max30102Handler,&g_blooddata,portMAX_DELAY);
+    xQueueOverwrite(Max30102Handler,&g_blooddata);
 	
 }
 

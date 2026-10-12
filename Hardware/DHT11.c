@@ -163,7 +163,7 @@ void DHT11_SCAN(void)
 			UsartPrintf(USART1,"\r\n读取DHT11成功!\r\n\r\n湿度为%d.%d ％RH ，温度为 %d.%d ℃ \r\n",
 											DHT11_Data.humi_int, DHT11_Data.humi_deci,
 											DHT11_Data.temp_int, DHT11_Data.temp_deci);
-            xQueueSend(DTH11Handler,&DHT11_Data,portMAX_DELAY);
+            xQueueOverwrite(DTH11Handler,&DHT11_Data);
 
          }
 
