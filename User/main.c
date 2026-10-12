@@ -446,6 +446,12 @@ int main(void)
     BaseType_t xReceive = pdPASS;
     DHT11_Data_TypeDef DHT11_Data_R2;
     BloodData Trans;
+
+    /* NVIC优先级分组:必须在任何NVIC_Init之前设置。misc.c的NVIC_Init会读AIRCR反推分组,
+       若PRIGROUP保持复位值0会算出负移位数导致IP一律写成0x00。
+       这里设为4位全抢占,与FreeRTOS约定的configMAX_SYSCALL_INTERRUPT_PRIORITY(5<<4=0x50)一致 */
+    NVIC_PriorityGroupConfig(NVIC_PriorityGroup_4);
+
     /* 初始化部分 */
     OLED_Init();                                    // 初始化OLED显示器
     MyRTC_Init();                                   // 初始化实时时钟

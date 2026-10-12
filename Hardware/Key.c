@@ -72,7 +72,7 @@ void EXTI8_Config(void)
     EXTI_Init(&EXTI_InitStructure);                       
     
     NVIC_InitStructure.NVIC_IRQChannel = EXTI9_5_IRQn;              // 选择EXTI线0中断通道
-    NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 0x00;    // 设置抢占优先级
+    NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 5;       // 抢占优先级5:配合分组4,IP=0x50满足configMAX_SYSCALL_INTERRUPT_PRIORITY规则
     NVIC_InitStructure.NVIC_IRQChannelSubPriority = 0x00;           // 设置响应优先级
     NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;                 // 使能中断通道
     NVIC_Init(&NVIC_InitStructure);                                 // 初始化NVIC
