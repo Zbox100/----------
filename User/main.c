@@ -46,6 +46,7 @@ TaskHandle_t Start_MyTaskListHandler;
 TaskHandle_t Time_modification_fHandler;
 TaskHandle_t Key_GetNum_fHandler;
 TaskHandle_t beep_Work_fHandler;
+static uint8_t beep_Cnt = 0;    //beep 报警已翻转轮数:达到上限后自挂起,防止误触发后无限报警
 TaskHandle_t Usart_Rx_fHandler;
 ////////////////////队列实现///////////////////////////////////
 QueueHandle_t QueueGetHandler  =NULL;
@@ -122,6 +123,7 @@ void Adxl345_Work_f(void*arg)
 
         /* ② 报警触发：任一轴冲击且使能 */
         if ((impact_x || impact_y) && IN) {
+            beep_Cnt = 0;                       //新一轮报警从0开始计数,保证每次触发都是完整时长
             vTaskResume(beep_Work_fHandler);
             impact_x = 0 ;
             impact_y = 0 ;
@@ -487,6 +489,8 @@ void beep_Work_f(void* arg)
 {	
     while(1)
     {	
+    if(beep_Cnt >= 10) vTaskSuspend(NULL);  //自限:翻转10轮(每轮约200ms,合计约2s)后自挂起,不再无限报警
+    beep_Cnt++;
     UsartPrintf(USART1, "  FALLING DOWN! \r\n");    
     OLED_ShowString(3, 2, "FALLING DOWN!");
 	GPIO_ResetBits(GPIOB, GPIO_Pin_12);						
