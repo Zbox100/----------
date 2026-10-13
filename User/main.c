@@ -623,7 +623,7 @@ void Start_MyTaskList(void *arg)  //任务启动任务
 
 int main(void)
 {
-    BaseType_t xReceive = pdPASS;
+    BaseType_t xReceive;
     DHT11_Data_TypeDef DHT11_Data_R2;
     BloodData Trans;
 
