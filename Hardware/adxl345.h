@@ -4,6 +4,7 @@
 #define uchar unsigned char
 	
 extern float temp_X,temp_Y,temp_Z;
+extern unsigned char err;   /* I2C ACK result: 0=ACK, 1=NAK */
 
 
 void SCL_Set_Output(void);

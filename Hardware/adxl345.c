@@ -16,7 +16,7 @@ https://www.bilibili.com/video/BV1UA411q7bw/?spm_id_from=333.337.search-card.all
 #define SET_SCL() GPIO_SetBits(SCL_GPIO, SCL_GPIO_PIN)   //拉高时钟线
 #define CLE_SCL() GPIO_ResetBits(SCL_GPIO, SCL_GPIO_PIN) //拉低时钟线
                     
-#define SDA_OUT() SDA_Set_Output()                      //设置数据线为输出模式
+#define SDA_OUT() SDA_Set_Output()                      //设置数据线为输出模式(开漏)
 #define SDA_INT() SDA_Set_Input()                       //设置数据线为输入模式
 #define SET_SDA() GPIO_SetBits(SDA_GPIO, SDA_GPIO_PIN)  //拉高数据线
 #define CLE_SDA() GPIO_ResetBits(SDA_GPIO, SDA_GPIO_PIN)//拉低数据线
@@ -42,7 +42,7 @@ void SDA_Set_Output(void)
 {
 	GPIO_InitTypeDef  GPIO_InitStructure;
 	GPIO_InitStructure.GPIO_Pin = SDA_GPIO_PIN;				 
-	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP; 		 
+	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_OD; 		 
 	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;		 
 	GPIO_Init(SDA_GPIO, &GPIO_InitStructure);					 					
 }	
@@ -256,19 +256,20 @@ void Init_ADXL345(void)
    Single_Write_ADXL345(0x20,0xFF);   //Z 偏移量 根据测试传感器的状态写入pdf29页
 }
 //***********************************************************************
-//显示x轴
 void ReadData_x(void)
 {   
-  int  dis_data;                       //变量
+  int16_t  dis_data;                       //变量
   Multiple_Read_ADXL345();       	//连续读出数据，存储在BUF中
     
-  dis_data=(BUF[1]<<8)+BUF[0];  //合成数据   
+  /* Sign-extend each axis: BUF is unsigned char, so without the int16_t cast a
+     negative acceleration (e.g. 0xFFFF -> 65535) would be read as ~255000 mg. */
+  dis_data=(int16_t)((BUF[1]<<8)|BUF[0]);  //合成数据   
   temp_X=(double)dis_data*3.9;  //计算数据和显示,查考ADXL345快速入门第4页
     
-  dis_data=(BUF[3]<<8)+BUF[2];  //合成数据   
+  dis_data=(int16_t)((BUF[3]<<8)|BUF[2]);  //合成数据   
   temp_Y=(double)dis_data*3.9;  //计算数据和显示,查考ADXL345快速入门第4页
     
-  dis_data=(BUF[5]<<8)+BUF[4];    //合成数据   
+  dis_data=(int16_t)((BUF[5]<<8)|BUF[4]);    //合成数据   
   temp_Z=(double)dis_data*3.9;  //计算数据和显示,查考ADXL345快速入门第4页
 }
 

@@ -99,6 +99,15 @@ void Adxl345_Work_f(void*arg)
         // t_last = t_now;
 
         ReadData_x();  						            //三轴检测函数
+        /* 量程校验:ADXL345 配 ±16g、3.9mg/LSB,单轴物理极值约 ±15974mg。
+           超出即视为 I2C 位错误造成的脏值,丢弃本轮样本(不更新 buf、不计步、
+           不发队列、不判冲击),避免脏值污染合加速度差分 */
+        if(temp_X < -17000 || temp_X > 17000 ||
+           temp_Y < -17000 || temp_Y > 17000 ||
+           temp_Z < -17000 || temp_Z > 17000)
+        {
+            continue;               //回到循环顶,vTaskDelayUntil 保证 50ms 周期不变
+        }
         mag = sqrtf(temp_X*temp_X + temp_Y*temp_Y + temp_Z*temp_Z);  //三轴合加速度,对握持方向不敏感
         diff = fabsf(mag - buf);                               //合加速度差分绝对值
         //      UsartPrintf(USART1, "mag=%.0f diff=%.0f\r\n", mag, diff); //调试打印:128字栈会被其256B缓冲+vprintf击穿导致死机,已停用
@@ -114,9 +123,6 @@ void Adxl345_Work_f(void*arg)
         buf = mag;
         xQueueSend(ADX1345Handler,&Normal_num,0);
       
-        if(temp_X < 1 || temp_X > 200000) temp_X = 0;
-        if(temp_Y < 1 || temp_Y > 200000) temp_Y = 0;
-
         /* ① 逐轴检测：各自独立标志 */ 
         impact_x = (temp_X > 700 ) ? 1 : 0 ;
         impact_y = (temp_Y > 700 ) ? 1 : 0 ;
