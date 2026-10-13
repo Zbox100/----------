@@ -135,6 +135,7 @@ void Adxl345_Work_f(void*arg)
 void Adxl345_Show_f( void * arg )
 {
     uint32_t dis_buf_R;
+    uint8_t  frame_drawn = 0;   //静态帧(边框/标签)是否已画:进页面清一次屏后置1,退出时置0
     while(1)
     {
         xQueueReceive(KeyExitHandler,&KeyExit_R,NULL);
@@ -145,15 +146,23 @@ void Adxl345_Show_f( void * arg )
             GPIO_ResetBits(GPIOB, GPIO_Pin_12);
 			GPIO_SetBits(GPIOB, GPIO_Pin_1);
             OLED_Clear();
+            frame_drawn = 0;        //离屏清场:静态帧随之失效,下次进页面重画
             vTaskResume(Menu_handling_fHandler);vTaskResume(Key_GetNum_fHandler);vTaskSuspend(beep_Work_fHandler);vTaskSuspend(NULL);
             taskEXIT_CRITICAL();
         }
-        OLED_Clear();
+        /* 局部刷新:整屏清除 + 静态边框/标签只在进页面时做一次,
+           循环内只重写变化的数字(OLED_ShowNum 定宽整格覆盖,天然盖掉旧值),
+           不再每轮 OLED_Clear —— 那是本页 100ms 整屏闪烁的根源 */
+        if(!frame_drawn)
+        {
+            OLED_Clear();                       //抹掉上一页菜单的残留,整屏只清这一次
+            OLED_ShowString(1, 1, "***************");
+            OLED_ShowString(2, 1, "Bushu:");
+            OLED_ShowString(4, 1, "***************");
+            frame_drawn = 1;
+        }
         xQueueReceive(ADX1345Handler,&dis_buf_R,portMAX_DELAY);
-        OLED_ShowString(1, 1, "***************");
-        OLED_ShowString(2, 1, "Bushu:");
         OLED_ShowNum(2,7,dis_buf_R,4);
-        OLED_ShowString(4, 1, "***************");
         vTaskDelay(100);
     }
 }
@@ -172,25 +181,32 @@ void Time_Show_f( void*arg ) //时间显示任务任务
 { 
     
     uint16_t MyRTC_R[6];
+    uint8_t  frame_drawn = 0;   //静态帧是否已画:退出或 SetTime_w 改写屏幕后置0重画
        
     while(1)
     {
         if(global_var==2)
         {
         SetTime_w();
+        frame_drawn = 0;    //SetTime_w 会往第4行写 "Exiting..." 再涂成空格,静态帧已脏,下一轮重画
         }
         
         KeyExit_R = 0;      //先清零:非阻塞接收失败时会保留旧值,清掉避免上一轮的 1 误触发退出
         xQueueReceive(KeyExitHandler,&KeyExit_R,pdMS_TO_TICKS(50));
         if((KeyExit_R == 1)||(global_var==1))   //global_var==1 是蓝牙发 0 的退出路径,SetTime_w 提前返回时靠它退出
         {taskENTER_CRITICAL();
-        KeyExit_R = 0;global_var = 0;OLED_Clear();vTaskResume(Menu_handling_fHandler);vTaskResume(Key_GetNum_fHandler);vTaskSuspend(NULL);
+        KeyExit_R = 0;global_var = 0;OLED_Clear();frame_drawn = 0;vTaskResume(Menu_handling_fHandler);vTaskResume(Key_GetNum_fHandler);vTaskSuspend(NULL);
         taskEXIT_CRITICAL();}
-        OLED_Clear();
-        OLED_ShowString(1, 1, "Date:    -  -  ");
-        OLED_ShowString(2, 1, "Time:  :  :  ");
-        OLED_ShowString(3, 1, "Key 5 to amend  ");
-        OLED_ShowString(4, 1, "***************");
+        /* 局部刷新:整屏清除 + 静态标签只在进页面时做一次,循环内只重写 6 个时间数字 */
+        if(!frame_drawn)
+        {
+            OLED_Clear();                       //抹掉上一页菜单的残留
+            OLED_ShowString(1, 1, "Date:    -  -  ");
+            OLED_ShowString(2, 1, "Time:  :  :  ");
+            OLED_ShowString(3, 1, "Key 5 to amend  ");
+            OLED_ShowString(4, 1, "***************");
+            frame_drawn = 1;
+        }
         xQueueReceive(QueueGetHandler,MyRTC_R,portMAX_DELAY);
         OLED_ShowNum(1, 6, MyRTC_R[0], 4);     // 年
         OLED_ShowNum(1, 11, MyRTC_R[1], 2);    // 月
@@ -244,6 +260,7 @@ void DTH11_Work_f(void*arg)
 void DTH11_Show_f(void*arg)
 {
     DHT11_Data_TypeDef DHT11_Data_R;
+    uint8_t frame_drawn = 0;        //静态帧是否已画:退出清屏后置0,下次进页面重画
 
     while(1)
     {   
@@ -253,6 +270,7 @@ void DTH11_Show_f(void*arg)
             taskENTER_CRITICAL();
             KeyExit_R = 0;global_var = 0;          
             OLED_Clear();
+            frame_drawn = 0;        //离屏清场:静态帧随之失效,下次进页面重画
             vTaskResume(Menu_handling_fHandler);
             vTaskResume(Key_GetNum_fHandler);
             vTaskSuspend(NULL);
@@ -261,17 +279,22 @@ void DTH11_Show_f(void*arg)
         /* 同 Max30102_Show_f:DHT11_SCAN() 只在读成功时才往队列里送数据,模块未连接时
            队列永远为空,原 portMAX_DELAY 死等会让本任务无法响应退出请求,页面卡在"Exiting..."
            改为带超时接收,超时后回到循环顶部重新判断退出条件 */
-        if(xQueueReceive(DTH11Handler,&DHT11_Data_R,pdMS_TO_TICKS(200)) == pdTRUE)
+        /* 局部刷新:静态标签只在进页面时画一次,数据到达时只重写 4 个数字 */
+        if(!frame_drawn)
         {
-            OLED_Clear();
+            OLED_Clear();                       //抹掉上一页菜单的残留
             OLED_ShowString(1, 1, "***************");
             OLED_ShowString(2,3,"Humi:");
             OLED_ShowString(3,3,"Temp:");
+            OLED_ShowString(4, 1, "***************");
+            frame_drawn = 1;
+        }
+        if(xQueueReceive(DTH11Handler,&DHT11_Data_R,pdMS_TO_TICKS(200)) == pdTRUE)
+        {
             OLED_ShowNum(2,9,DHT11_Data_R.humi_int,2);
             OLED_ShowNum(2,12,DHT11_Data_R.humi_deci,2);
             OLED_ShowNum(3,9,DHT11_Data_R.temp_int,2);
             OLED_ShowNum(3,12,DHT11_Data_R.temp_deci,2);
-            OLED_ShowString(4, 1, "***************");
         }
         vTaskDelay(100);
     }
@@ -317,6 +340,7 @@ void Max30102_Work_f(void*arg)
 
 void Max30102_Show_f(void*arg)
 {
+   uint8_t frame_drawn = 0;     //静态帧是否已画:退出清屏后置0,下次进页面重画
    while(1)
    {
         xQueueReceive(KeyExitHandler,&KeyExit_R,NULL);
@@ -325,6 +349,7 @@ void Max30102_Show_f(void*arg)
             taskENTER_CRITICAL();
             KeyExit_R = 0;global_var = 0;            
             OLED_Clear();
+            frame_drawn = 0;    //离屏清场:静态帧随之失效,下次进页面重画
             vTaskResume(Menu_handling_fHandler);
             vTaskResume(Key_GetNum_fHandler);
             vTaskSuspend(NULL);
@@ -335,15 +360,20 @@ void Max30102_Show_f(void*arg)
        既刷不出界面,也回不到循环顶部判断退出条件(KeyExit_R/global_var==1);
        而退出键中断已经先把屏幕清掉并写上"Exiting...",于是页面卡死在这行字上。
        改为带超时接收:超时也会回到循环顶部重新判断退出条件 */
-    if(xQueueReceive(Max30102Handler,&g_blooddata,pdMS_TO_TICKS(200)) == pdTRUE)
+    /* 局部刷新:静态标签只在进页面时画一次,数据到达时只重写 SpO2 与心率两个数字 */
+    if(!frame_drawn)
     {
-        OLED_Clear();
+        OLED_Clear();                           //抹掉上一页菜单的残留
         OLED_ShowString(1, 1, "***************");
         OLED_ShowString(2,4,"SpO2: ");
-        OLED_ShowNum(2,9,g_blooddata.SpO2,3);
         OLED_ShowString(3,4,"Heart:");
-        OLED_ShowNum(3,10,g_blooddata.heart,3);
         OLED_ShowString(4, 1, "***************");
+        frame_drawn = 1;
+    }
+    if(xQueueReceive(Max30102Handler,&g_blooddata,pdMS_TO_TICKS(200)) == pdTRUE)
+    {
+        OLED_ShowNum(2,9,g_blooddata.SpO2,3);
+        OLED_ShowNum(3,10,g_blooddata.heart,3);
     }
     
     vTaskDelay(100);
