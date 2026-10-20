@@ -245,7 +245,7 @@
  * 置 1 后,tasks.c 会在每次任务切换时把 portGET_RUN_TIME_COUNTER_VALUE() 的差值
  * 累加到各任务的 ulRunTimeCounter,于是能读出每个任务的真实 CPU 占用(用于验收空闲占比)。
  * 注意:置 1 后 FreeRTOS.h 会强制检查下面两个端口宏必须都已定义,否则报 #error */
-#define configGENERATE_RUN_TIME_STATS           1
+#define configGENERATE_RUN_TIME_STATS           0
 
 /* 运行时间统计的时基:直接复用内核节拍计数( configTICK_RATE_HZ=1000,即 1ms 分辨率 )
  *   portCONFIGURE_TIMER_FOR_RUN_TIME_STATS() 由内核在启动调度器前调用一次,这里无需额外配置,留空;

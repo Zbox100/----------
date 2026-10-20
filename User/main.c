@@ -59,6 +59,13 @@ QueueHandle_t UsartRxHandler   =NULL;   //USART1 ISR -> Usart_Rx_f
 QueueHandle_t UsartMenuHandler =NULL;   //Usart_Rx_f  -> Menu_handling_f
 QueueHandle_t UsartTimeHandler =NULL;   //Usart_Rx_f  -> SetTime_w
 
+/* ---- 临时诊断:计步页第3行读数,查清后删除 ----
+   由 Adxl345_Work_f 写入、Adxl345_Show_f 读出(协作式调度下二者不会同时运行) */
+volatile float dbg_mag     = 0.0f;   //当前三轴合加速度(mg),静止约1000,恒为~6 说明器件没在出数
+volatile float dbg_dev_min = 0.0f;   //最近约1s 窗口内 dev 的最小值:若它压不到 -50,重新武装就不会发生
+volatile uint16_t dbg_gap  = 0;      //最近约1s 窗口内采样任务"唤醒间隔"的最大值(ms),正常应约50;远大于50 说明被别的任务饿死
+volatile uint16_t dbg_show_gap = 0;  //最近约1s 窗口内"显示任务"自身循环间隔的最大值(ms);远大于~50 说明显示任务被饿死
+
 void Adxl345_Work_f(void*arg)
 {	
         uint32_t Normal_num=0;                          //正常次数
@@ -72,6 +79,8 @@ void Adxl345_Work_f(void*arg)
         const float STEP_TH = 100.0f;                  //抬升阈值(mg):静止约1000,走路摆动约±100~200,故取100
         const float ARM_TH  = 50.0f;                   //回落阈值(mg):负向,取50使每步都能重新武装
         const uint16_t STEP_REFRACTORY_MS = 300;       //两次计步最小间隔(ms)
+        float dev_min = 1000.0f;                       //临时诊断:本窗口内 dev 最小值
+        uint16_t win_cnt = 0;                          //临时诊断:窗口帧计数(20×50ms=1s)
         TickType_t lastStepTick = 0;                   //上一次计步的时刻(tick)
         TickType_t xLastWakeTime = xTaskGetTickCount(); //记录首次唤醒时刻,建立绝对时间基准网格
         const TickType_t xPeriod = pdMS_TO_TICKS(50);   //50ms 精确采样周期
@@ -83,6 +92,25 @@ void Adxl345_Work_f(void*arg)
 	{
         // TickType_t t_now;
         vTaskDelayUntil(&xLastWakeTime, xPeriod);       //按绝对时间网格唤醒,补偿执行耗时,保证 50ms 等间隔
+
+        /* ---- 临时诊断:测本任务实际唤醒间隔,判断是否被其它任务饿死 ---- */
+        {
+            static TickType_t last_wake = 0;
+            static uint32_t   gap_max   = 0;
+            static uint16_t   gap_n     = 0;
+            TickType_t now_t = xTaskGetTickCount();
+            if(last_wake != 0)
+            {
+                uint32_t g = (uint32_t)(now_t - last_wake);
+                if(g > gap_max) gap_max = g;
+            }
+            last_wake = now_t;
+            if(++gap_n >= 20)                 //每1s发布一次"窗口内最大唤醒间隔"
+            {
+                dbg_gap = (gap_max > 999) ? 999 : (uint16_t)gap_max;
+                gap_n = 0; gap_max = 0;
+            }
+        }
 
         /*周期实测(已验证,故停用):记录相邻两次唤醒的tick差,累加100次再打印一次。
           每轮都打印会显著拉长被测周期,所以必须攒批输出。
@@ -115,6 +143,11 @@ void Adxl345_Work_f(void*arg)
         /* 慢速基线:一阶低通,τ≈5s,只跟随重力/姿态的缓慢变化,不被步态振荡带走 */
         base += (mag - base) * 0.01f;
         dev = mag - base;                                      //相对基线的偏差(带符号)
+
+        /* ---- 临时诊断:刷新"最近约1s窗口内 dev 的最小值" ---- */
+        dbg_mag = mag;
+        if(win_cnt == 0 || dev < dev_min) dev_min = dev;
+        if(++win_cnt >= 20) { dbg_dev_min = dev_min; win_cnt = 0; dev_min = 1000.0f; }
 
         /* 计步:施密特状态机,判据用"相对基线的偏差 dev",而不是 |Δmag|。
            原因:|Δmag| 在一次落脚内有多个峰(落地/回弹/摆臂),它们的间距与相邻
@@ -160,6 +193,7 @@ void Adxl345_Show_f( void * arg )
 {
     uint32_t dis_buf_R;
     uint32_t last_shown = 0xFFFFFFFF;   //上次已显示值(取不可能的值,保证首次必刷)
+    uint16_t shown_gap  = 0xFFFF;       //临时诊断:已显示的显示任务循环间隔峰值
     uint8_t  frame_drawn = 0;   //静态帧(边框/标签)是否已画:进页面清一次屏后置1,退出时置0
     while(1)
     {
@@ -175,6 +209,24 @@ void Adxl345_Show_f( void * arg )
             vTaskResume(Menu_handling_fHandler);vTaskResume(Key_GetNum_fHandler);vTaskSuspend(beep_Work_fHandler);vTaskSuspend(NULL);
             taskEXIT_CRITICAL();
         }
+        /* ---- 临时诊断:测"显示任务"自身循环间隔,判断是否被别的任务饿死 ---- */
+        {
+            static TickType_t last_sh = 0;
+            static uint32_t   sg_max  = 0;
+            static uint16_t   sg_n    = 0;
+            TickType_t now_s = xTaskGetTickCount();
+            if(last_sh != 0)
+            {
+                uint32_t g = (uint32_t)(now_s - last_sh);
+                if(g > sg_max) sg_max = g;
+            }
+            last_sh = now_s;
+            if(++sg_n >= 20)                 //每20圈(约1s)发布一次"窗口内最大循环间隔"
+            {
+                dbg_show_gap = (sg_max > 999) ? 999 : (uint16_t)sg_max;
+                sg_n = 0; sg_max = 0;
+            }
+        }
         /* 局部刷新:整屏清除 + 静态边框/标签只在进页面时做一次,
            循环内只重写变化的数字(OLED_ShowNum 定宽整格覆盖,天然盖掉旧值),
            不再每轮 OLED_Clear —— 那是本页 100ms 整屏闪烁的根源 */
@@ -186,7 +238,23 @@ void Adxl345_Show_f( void * arg )
             OLED_ShowString(4, 1, "***************");
             frame_drawn = 1;
             last_shown = 0xFFFFFFFF;    //重画静态帧后强制刷新一次数字
+            shown_gap  = 0xFFFF;        //临时诊断:静态帧把第1行星号重画了,强制S行再画一次
         }
+        /* ---- 临时诊断(第1行):显示任务自身循环间隔峰值,查清后删除 ---- */
+        if(dbg_show_gap != shown_gap)
+        {
+            shown_gap = dbg_show_gap;
+            OLED_ShowString(1, 1, "S");
+            OLED_ShowNum(1, 2, dbg_show_gap, 4);
+            OLED_ShowString(1, 6, "          ");   //清掉右侧残留的星号边框
+        }
+        /* ---- 临时诊断:第3行 M<mag> D<最近1s dev 最小值> G<唤醒间隔峰值>,查清后删除 ---- */
+        OLED_ShowString(3, 1, "M");
+        OLED_ShowNum(3, 2, (uint32_t)dbg_mag, 4);
+        OLED_ShowString(3, 7, "D");
+        OLED_ShowSignedNum(3, 8, (int32_t)dbg_dev_min, 4);
+        OLED_ShowString(3, 13, "G");
+        OLED_ShowNum(3, 14, dbg_gap, 3);
         /* 只保留最新值:50ms 超时轮询代替"收一次就固定睡100ms",
            且仅在数值变化时重画,消掉固定延时叠加的显示滞后 */
         if(xQueueReceive(ADX1345Handler,&dis_buf_R,pdMS_TO_TICKS(50)) == pdTRUE)
@@ -261,31 +329,6 @@ void DTH11_Work_f(void*arg)
     while(1)
     {
         DHT11_SCAN();     
-        /* ---- 临时验收观测:idle 真实占比 ----
-           空闲占比 = 本窗口内空闲任务的累计运行时间 / 本窗口总时间。
-           两项都取本窗口的增量再相除,不受累计值回绕影响。
-           窗口即本任务的 2s 周期;验收完成后随 configGENERATE_RUN_TIME_STATS 一起移除 */
-        {
-            static uint32_t last_idle  = 0;
-            static uint32_t last_total = 0;
-            static uint8_t  first_win  = 1;
-            /* 运行时间统计的时基就是节拍计数(见 FreeRTOSConfig.h),
-               ulTaskGetIdleRunTimeCounter() 即空闲任务累计占用的节拍数。
-               该函数需 configGENERATE_RUN_TIME_STATS=1 且 INCLUDE_xTaskGetIdleTaskHandle=1 */
-            uint32_t now_idle  = (uint32_t)ulTaskGetIdleRunTimeCounter();
-            uint32_t now_total = (uint32_t)xTaskGetTickCount();
-            if(!first_win)   //首窗没有可相减的基准,跳过
-            {
-                uint32_t idle_delta  = now_idle  - last_idle;
-                uint32_t total_delta = now_total - last_total;
-                uint32_t pct = (total_delta != 0U)
-                             ? (uint32_t)(((uint64_t)idle_delta * 100U) / total_delta) : 0U;
-                UsartPrintf(USART1, "idle=%u%%\r\n", (unsigned int)pct);
-            }
-            first_win  = 0;
-            last_idle  = now_idle;
-            last_total = now_total;
-        }
         vTaskDelayUntil(&xLastWakeTime, xPeriod);    //按绝对时间网格唤醒,补偿执行耗时,保证 2s 等间隔
     }
 }
@@ -608,19 +651,19 @@ static void Create_Task(TaskFunction_t fn, char *name, uint16_t stack, UBaseType
 void Start_MyTaskList(void *arg)  //任务启动任务
 {
     taskENTER_CRITICAL();
-    Create_Task(Time_Work_f,     "Time_Work_f",     128, 4, &Time_Work_fHandler);
-    Create_Task(Time_Show_f,     "Time_Show_f",     128, 4, &Time_Show_fHandler);
-    Create_Task(Adxl345_Work_f,  "Adxl345_Work_f",  192, 4, &Adxl345_Work_fHandler);  //192字:周期性打印已移除,恢复原值;若以后本任务内要调UsartPrintf,必须加到256
-    Create_Task(Adxl345_Show_f,  "Adxl345_Show_f",  128, 4, &Adxl345_Show_fHandler);
-    Create_Task(DTH11_Work_f,    "DTH11_Work_f",    224, 4, &DTH11_Work_fHandler);
-    Create_Task(DTH11_Show_f,    "DTH11_Show_f",    224, 4, &DTH11_Show_fHandler);
-    Create_Task(Max30102_Work_f, "Max30102_Work_f", 224, 4, &Max30102_Work_fHandler);
-    Create_Task(Max30102_Show_f, "Max30102_Show_f", 224, 4, &Max30102_Show_fHandler);
+    Create_Task(Time_Work_f,     "Time_Work_f",      96, 4, &Time_Work_fHandler);  //96字:实测峰值38w
+    Create_Task(Time_Show_f,     "Time_Show_f",    128, 4, &Time_Show_fHandler);  //128字:内含 SetTime_w()(多路打印),实测峰值52w,按"+48余量"取128
+    Create_Task(Adxl345_Work_f,  "Adxl345_Work_f",   128, 4, &Adxl345_Work_fHandler);  //96字:实测峰值38w
+    Create_Task(Adxl345_Show_f,  "Adxl345_Show_f",   96, 4, &Adxl345_Show_fHandler);  //96字:实测峰值36w
+    Create_Task(DTH11_Work_f,    "DTH11_Work_f",    128, 4, &DTH11_Work_fHandler);  //128字:此前含临时栈水位打印时峰值66~70w,观测装置已拆,峰值更低
+    Create_Task(DTH11_Show_f,    "DTH11_Show_f",     96, 4, &DTH11_Show_fHandler);  //96字:实测峰值38w
+    Create_Task(Max30102_Work_f, "Max30102_Work_f", 176, 4, &Max30102_Work_fHandler);  //176字:实测峰值123w
+    Create_Task(Max30102_Show_f, "Max30102_Show_f",  96, 4, &Max30102_Show_fHandler);  //96字:实测峰值34w
 
-    Create_Task(Menu_handling_f, "Menu_handling_f", 256, 4, &Menu_handling_fHandler);
-    Create_Task(Key_GetNum_f,    "Key_GetNum_f",    128, 4, &Key_GetNum_fHandler);
-    Create_Task(beep_Work_f,     "beep_Work_f",     128, 4, &beep_Work_fHandler);
-    Create_Task(Usart_Rx_f,      "Usart_Rx_f",      128, 3, &Usart_Rx_fHandler);
+    Create_Task(Menu_handling_f, "Menu_handling_f", 128, 4, &Menu_handling_fHandler);  //128字:实测峰值60w
+    Create_Task(Key_GetNum_f,    "Key_GetNum_f",     96, 4, &Key_GetNum_fHandler);  //96字:实测峰值34w
+    Create_Task(beep_Work_f,     "beep_Work_f",      96, 4, &beep_Work_fHandler);  //96字:实测峰值42w(已触发报警跑过打印分支);UsartPrintf 的 256B 缓冲是 static,不在任务栈上
+    Create_Task(Usart_Rx_f,      "Usart_Rx_f",       96, 3, &Usart_Rx_fHandler);  //96字:实测峰值32w
 
     if(Task_Fail_Cnt > 0)
     {
