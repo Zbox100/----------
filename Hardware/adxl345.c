@@ -1,31 +1,31 @@
 #include "stm32f10x.h"
 #include "Delay.h"
 #include "adxl345.h"
-/*²¿·ÖÒýÓÃ×ÔbÕ¾up£ºµ¶Õ¶·ç»ª
+/*ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½bÕ¾upï¿½ï¿½ï¿½ï¿½Õ¶ï¿½ç»ª
 https://www.bilibili.com/video/BV1UA411q7bw/?spm_id_from=333.337.search-card.all.click&vd_source=ae7e10257b47cf52dd0f8191f32a0d8b
 */
 #define SDA_RCC		  	RCC_APB2Periph_GPIOA
 #define SDA_GPIO		  GPIOA
 #define SDA_GPIO_PIN	GPIO_Pin_4
 
-#define SCL_RCC			  RCC_APB2Periph_GPIOA   //Ê±ÖÓºÅ
-#define SCL_GPIO		  GPIOA                  //¶Ë¿ÚºÅ
-#define SCL_GPIO_PIN	GPIO_Pin_5             //Òý½ÅºÅ
+#define SCL_RCC			  RCC_APB2Periph_GPIOA   //Ê±ï¿½Óºï¿½
+#define SCL_GPIO		  GPIOA                  //ï¿½Ë¿Úºï¿½
+#define SCL_GPIO_PIN	GPIO_Pin_5             //ï¿½ï¿½ï¿½Åºï¿½
 
-#define SCL_OUT() SCL_Set_Output()                       //ÉèÖÃÊ±ÖÓÏßÎªÊä³öÄ£Ê½
-#define SET_SCL() GPIO_SetBits(SCL_GPIO, SCL_GPIO_PIN)   //À­¸ßÊ±ÖÓÏß
-#define CLE_SCL() GPIO_ResetBits(SCL_GPIO, SCL_GPIO_PIN) //À­µÍÊ±ÖÓÏß
+#define SCL_OUT() SCL_Set_Output()                       //ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½ï¿½ï¿½Îªï¿½ï¿½ï¿½Ä£Ê½
+#define SET_SCL() GPIO_SetBits(SCL_GPIO, SCL_GPIO_PIN)   //ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½ï¿½ï¿½
+#define CLE_SCL() GPIO_ResetBits(SCL_GPIO, SCL_GPIO_PIN) //ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½ï¿½ï¿½
                     
-#define SDA_OUT() SDA_Set_Output()                      //ÉèÖÃÊý¾ÝÏßÎªÊä³öÄ£Ê½(¿ªÂ©)
-#define SDA_INT() SDA_Set_Input()                       //ÉèÖÃÊý¾ÝÏßÎªÊäÈëÄ£Ê½
-#define SET_SDA() GPIO_SetBits(SDA_GPIO, SDA_GPIO_PIN)  //À­¸ßÊý¾ÝÏß
-#define CLE_SDA() GPIO_ResetBits(SDA_GPIO, SDA_GPIO_PIN)//À­µÍÊý¾ÝÏß
-#define SDA_VAL() GPIO_ReadInputDataBit(SDA_GPIO, SDA_GPIO_PIN)     //¶ÁÈ¡Êý¾ÝÏß×´Ì¬
+#define SDA_OUT() SDA_Set_Output()                      //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Îªï¿½ï¿½ï¿½Ä£Ê½(ï¿½ï¿½Â©)
+#define SDA_INT() SDA_Set_Input()                       //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Îªï¿½ï¿½ï¿½ï¿½Ä£Ê½
+#define SET_SDA() GPIO_SetBits(SDA_GPIO, SDA_GPIO_PIN)  //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+#define CLE_SDA() GPIO_ResetBits(SDA_GPIO, SDA_GPIO_PIN)//ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+#define SDA_VAL() GPIO_ReadInputDataBit(SDA_GPIO, SDA_GPIO_PIN)     //ï¿½ï¿½È¡ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½×´Ì¬
 
-#define	SlaveAddress   0xA6	  //¶¨ÒåÆ÷¼þÔÚIIC×ÜÏßÖÐµÄ´ÓµØÖ·,¸ù¾ÝALT  ADDRESSµØÖ·Òý½Å²»Í¬ÐÞ¸Ä         //ALT  ADDRESSÒý½Å½ÓµØÊ±µØÖ·Îª0xA6£¬½ÓµçÔ´Ê±µØÖ·Îª0x3A
+#define	SlaveAddress   0xA6	  //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½IICï¿½ï¿½ï¿½ï¿½ï¿½ÐµÄ´Óµï¿½Ö·,ï¿½ï¿½ï¿½ï¿½ALT  ADDRESSï¿½ï¿½Ö·ï¿½ï¿½ï¿½Å²ï¿½Í¬ï¿½Þ¸ï¿½         //ALT  ADDRESSï¿½ï¿½ï¿½Å½Óµï¿½Ê±ï¿½ï¿½Ö·Îª0xA6ï¿½ï¿½ï¿½Óµï¿½Ô´Ê±ï¿½ï¿½Ö·Îª0x3A
 
-unsigned char BUF[8];                        //½ÓÊÕÊý¾Ý»º´æÇø      	
-unsigned char ge,shi,bai,qian,wan;           //ÏÔÊ¾±äÁ¿
+unsigned char BUF[8];                        //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ý»ï¿½ï¿½ï¿½ï¿½ï¿½      	
+unsigned char ge,shi,bai,qian,wan;           //ï¿½ï¿½Ê¾ï¿½ï¿½ï¿½ï¿½
 unsigned char err;
 float  temp_X,temp_Y,temp_Z;
 
@@ -57,44 +57,44 @@ void SDA_Set_Input(void)
 }
 
 /**************************************
-ÆðÊ¼ÐÅºÅ
+ï¿½ï¿½Ê¼ï¿½Åºï¿½
 **************************************/
 void ADXL345_Start(void)
 {
     SCL_OUT();
     SDA_OUT();
-    SET_SDA();//SDA = 1;                    //À­¸ßÊý¾ÝÏß
-    SET_SCL();//SCL = 1;                    //À­¸ßÊ±ÖÓÏß
-    Delay_fnus(2);               //ÑÓÊ±
-    CLE_SDA();//SDA = 0;                    //À­µÍÊý¾ÝÏß
-    Delay_fnus(2);//Delay5us();               //ÑÓÊ±
-    CLE_SCL();//SCL = 0;                    //À­µÍÊ±ÖÓÏß
+    SET_SDA();//SDA = 1;                    //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+    SET_SCL();//SCL = 1;                    //ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½ï¿½ï¿½
+    Delay_fnus(2);               //ï¿½ï¿½Ê±
+    CLE_SDA();//SDA = 0;                    //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+    Delay_fnus(2);//Delay5us();               //ï¿½ï¿½Ê±
+    CLE_SCL();//SCL = 0;                    //ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½ï¿½ï¿½
 }
 
 /**************************************
-Í£Ö¹ÐÅºÅ
+Í£Ö¹ï¿½Åºï¿½
 **************************************/
 void ADXL345_Stop(void)
 {
     SCL_OUT();
     SDA_OUT();
-    CLE_SDA();//SDA = 0;                    //À­µÍÊý¾ÝÏß
-    SET_SCL();//SCL = 1;                    //À­¸ßÊ±ÖÓÏß
-    Delay_fnus(2);//Delay5us();                 //ÑÓÊ±
-    SET_SDA();//SDA = 1;                    //²úÉúÉÏÉýÑØ
-    Delay_fnus(2);//Delay5us();                 //ÑÓÊ±
+    CLE_SDA();//SDA = 0;                    //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+    SET_SCL();//SCL = 1;                    //ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½ï¿½ï¿½
+    Delay_fnus(2);//Delay5us();                 //ï¿½ï¿½Ê±
+    SET_SDA();//SDA = 1;                    //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+    Delay_fnus(2);//Delay5us();                 //ï¿½ï¿½Ê±
     CLE_SCL();
 }
 
 /**************************************
-·¢ËÍÓ¦´ðÐÅºÅ
-Èë¿Ú²ÎÊý:ack (0:ACK 1:NAK)
+ï¿½ï¿½ï¿½ï¿½Ó¦ï¿½ï¿½ï¿½Åºï¿½
+ï¿½ï¿½Ú²ï¿½ï¿½ï¿½:ack (0:ACK 1:NAK)
 **************************************/
 void ADXL345_SendACK(uchar ack)
 {   
     SCL_OUT();
     SDA_OUT();
-    if(ack==0)//SDA = ack;                  //Ð´Ó¦´ðÐÅºÅ
+    if(ack==0)//SDA = ack;                  //Ð´Ó¦ï¿½ï¿½ï¿½Åºï¿½
     {
       CLE_SDA();
     }
@@ -102,23 +102,23 @@ void ADXL345_SendACK(uchar ack)
     {
       SET_SDA();
     }
-    SET_SCL();//SCL = 1;                    //À­¸ßÊ±ÖÓÏß
-    Delay_fnus(2);//Delay5us();                 //ÑÓÊ±
-    CLE_SCL();//SCL = 0;                    //À­µÍÊ±ÖÓÏß
-    Delay_fnus(5);//Delay5us();                 //ÑÓÊ±
+    SET_SCL();//SCL = 1;                    //ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½ï¿½ï¿½
+    Delay_fnus(2);//Delay5us();                 //ï¿½ï¿½Ê±
+    CLE_SCL();//SCL = 0;                    //ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½ï¿½ï¿½
+    Delay_fnus(5);//Delay5us();                 //ï¿½ï¿½Ê±
 }
 
 /**************************************
-½ÓÊÕÓ¦´ðÐÅºÅ
+ï¿½ï¿½ï¿½ï¿½Ó¦ï¿½ï¿½ï¿½Åºï¿½
 **************************************/
 uchar ADXL345_RecvACK(void)
 {
     SDA_INT();
     SCL_OUT();
-    SET_SCL();//SCL = 1;                    //À­¸ßÊ±ÖÓÏß
-   Delay_fnus(2);//    Delay5us();                 //ÑÓÊ±
+    SET_SCL();//SCL = 1;                    //ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½ï¿½ï¿½
+   Delay_fnus(2);//    Delay5us();                 //ï¿½ï¿½Ê±
     SET_SCL();
-    if(SDA_VAL()== Bit_SET)   //CY = SDA;                   //¶ÁÓ¦´ðÐÅºÅ
+    if(SDA_VAL()== Bit_SET)   //CY = SDA;                   //ï¿½ï¿½Ó¦ï¿½ï¿½ï¿½Åºï¿½
     {
       err = 1;
     }
@@ -127,38 +127,38 @@ uchar ADXL345_RecvACK(void)
       err = 0;
     }
  
-    CLE_SCL() ;//SCL = 0;                    //À­µÍÊ±ÖÓÏß
-    Delay_fnus(5);//    Delay5us();                 //ÑÓÊ±
+    CLE_SCL() ;//SCL = 0;                    //ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½ï¿½ï¿½
+    Delay_fnus(5);//    Delay5us();                 //ï¿½ï¿½Ê±
     SDA_OUT();
     return err;
 }
 
 /**************************************
-ÏòIIC×ÜÏß·¢ËÍÒ»¸ö×Ö½ÚÊý¾Ý
+ï¿½ï¿½IICï¿½ï¿½ï¿½ß·ï¿½ï¿½ï¿½Ò»ï¿½ï¿½ï¿½Ö½ï¿½ï¿½ï¿½ï¿½ï¿½
 **************************************/
 void ADXL345_SendByte(unsigned char dat)
 {
     unsigned char i;
     SCL_OUT();
     SDA_OUT();
-    for (i=0; i<8; i++)         //8Î»¼ÆÊýÆ÷
+    for (i=0; i<8; i++)         //8Î»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
     {
-        Delay_fnus(5);             //ÑÓÊ±
-        if(dat&0x80)  //SDA = CY;               //ËÍÊý¾Ý¿Ú     
+        Delay_fnus(5);             //ï¿½ï¿½Ê±
+        if(dat&0x80)  //SDA = CY;               //ï¿½ï¿½ï¿½ï¿½ï¿½Ý¿ï¿½     
         {SET_SDA();}
         else
         {CLE_SDA();}       
-       Delay_fnus(5);             //ÑÓÊ±
-        SET_SCL();//SCL = 1;                //À­¸ßÊ±ÖÓÏß
-        Delay_fnus(5);             //ÑÓÊ±
-        CLE_SCL();//SCL = 0;                //À­µÍÊ±ÖÓÏß
-        dat <<= 1;              //ÒÆ³öÊý¾ÝµÄ×î¸ßÎ»
+       Delay_fnus(5);             //ï¿½ï¿½Ê±
+        SET_SCL();//SCL = 1;                //ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½ï¿½ï¿½
+        Delay_fnus(5);             //ï¿½ï¿½Ê±
+        CLE_SCL();//SCL = 0;                //ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½ï¿½ï¿½
+        dat <<= 1;              //ï¿½Æ³ï¿½ï¿½ï¿½ï¿½Ýµï¿½ï¿½ï¿½ï¿½Î»
     }
     ADXL345_RecvACK();
 }
 
 /**************************************
-´ÓIIC×ÜÏß½ÓÊÕÒ»¸ö×Ö½ÚÊý¾Ý
+ï¿½ï¿½IICï¿½ï¿½ï¿½ß½ï¿½ï¿½ï¿½Ò»ï¿½ï¿½ï¿½Ö½ï¿½ï¿½ï¿½ï¿½ï¿½
 **************************************/
 unsigned char ADXL345_RecvByte(void)
 {
@@ -168,13 +168,13 @@ unsigned char ADXL345_RecvByte(void)
     SDA_INT();
     SCL_OUT();
 
-    for (i=0; i<8; i++)         //8Î»¼ÆÊýÆ÷
+    for (i=0; i<8; i++)         //8Î»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
     {
         dat <<= 1;
-        Delay_fnus(5);            //ÑÓÊ±
+        Delay_fnus(5);            //ï¿½ï¿½Ê±
         SET_SCL();
 
-			if(SDA_VAL()== Bit_SET)   //CY = SDA;                   //¶ÁÓ¦´ðÐÅºÅ
+			if(SDA_VAL()== Bit_SET)   //CY = SDA;                   //ï¿½ï¿½Ó¦ï¿½ï¿½ï¿½Åºï¿½
 			{
 				Mid = 1;
 			}
@@ -184,93 +184,93 @@ unsigned char ADXL345_RecvByte(void)
 			}
         if(Mid) dat++;
         Delay_fnus(5);     
-        CLE_SCL();//SCL = 0;                //À­µÍÊ±ÖÓÏß
+        CLE_SCL();//SCL = 0;                //ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½ï¿½ï¿½
     }
     return dat;
 }
 
-//******µ¥×Ö½ÚÐ´Èë*******************************************
+//******ï¿½ï¿½ï¿½Ö½ï¿½Ð´ï¿½ï¿½*******************************************
 
 void Single_Write_ADXL345(uchar REG_Address,uchar REG_data)
 {
-    ADXL345_Start();                  //ÆðÊ¼ÐÅºÅ
-    ADXL345_SendByte(SlaveAddress);   //·¢ËÍÉè±¸µØÖ·+Ð´ÐÅºÅ
-    ADXL345_SendByte(REG_Address);    //ÄÚ²¿¼Ä´æÆ÷µØÖ·£¬Çë²Î¿¼ÖÐÎÄpdf22Ò³ 
-    ADXL345_SendByte(REG_data);       //ÄÚ²¿¼Ä´æÆ÷Êý¾Ý£¬Çë²Î¿¼ÖÐÎÄpdf22Ò³ 
-    ADXL345_Stop();                   //·¢ËÍÍ£Ö¹ÐÅºÅ
+    ADXL345_Start();                  //ï¿½ï¿½Ê¼ï¿½Åºï¿½
+    ADXL345_SendByte(SlaveAddress);   //ï¿½ï¿½ï¿½ï¿½ï¿½è±¸ï¿½ï¿½Ö·+Ð´ï¿½Åºï¿½
+    ADXL345_SendByte(REG_Address);    //ï¿½Ú²ï¿½ï¿½Ä´ï¿½ï¿½ï¿½ï¿½ï¿½Ö·ï¿½ï¿½ï¿½ï¿½Î¿ï¿½ï¿½ï¿½ï¿½ï¿½pdf22Ò³ 
+    ADXL345_SendByte(REG_data);       //ï¿½Ú²ï¿½ï¿½Ä´ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ý£ï¿½ï¿½ï¿½Î¿ï¿½ï¿½ï¿½ï¿½ï¿½pdf22Ò³ 
+    ADXL345_Stop();                   //ï¿½ï¿½ï¿½ï¿½Í£Ö¹ï¿½Åºï¿½
 }
 
-//********µ¥×Ö½Ú¶ÁÈ¡*****************************************
+//********ï¿½ï¿½ï¿½Ö½Ú¶ï¿½È¡*****************************************
 uchar Single_Read_ADXL345(uchar REG_Address)
 {  uchar REG_data;
-    ADXL345_Start();                          //ÆðÊ¼ÐÅºÅ
-    ADXL345_SendByte(SlaveAddress);           //·¢ËÍÉè±¸µØÖ·+Ð´ÐÅºÅ
-    ADXL345_SendByte(REG_Address);            //·¢ËÍ´æ´¢µ¥ÔªµØÖ·£¬´Ó0¿ªÊ¼	
-    ADXL345_Start();                          //ÆðÊ¼ÐÅºÅ
-    ADXL345_SendByte(SlaveAddress+1);         //·¢ËÍÉè±¸µØÖ·+¶ÁÐÅºÅ
-    REG_data=ADXL345_RecvByte();              //¶Á³ö¼Ä´æÆ÷Êý¾Ý
+    ADXL345_Start();                          //ï¿½ï¿½Ê¼ï¿½Åºï¿½
+    ADXL345_SendByte(SlaveAddress);           //ï¿½ï¿½ï¿½ï¿½ï¿½è±¸ï¿½ï¿½Ö·+Ð´ï¿½Åºï¿½
+    ADXL345_SendByte(REG_Address);            //ï¿½ï¿½ï¿½Í´æ´¢ï¿½ï¿½Ôªï¿½ï¿½Ö·ï¿½ï¿½ï¿½ï¿½0ï¿½ï¿½Ê¼	
+    ADXL345_Start();                          //ï¿½ï¿½Ê¼ï¿½Åºï¿½
+    ADXL345_SendByte(SlaveAddress+1);         //ï¿½ï¿½ï¿½ï¿½ï¿½è±¸ï¿½ï¿½Ö·+ï¿½ï¿½ï¿½Åºï¿½
+    REG_data=ADXL345_RecvByte();              //ï¿½ï¿½ï¿½ï¿½ï¿½Ä´ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 	  ADXL345_SendACK(1);   
-	  ADXL345_Stop();                           //Í£Ö¹ÐÅºÅ
+	  ADXL345_Stop();                           //Í£Ö¹ï¿½Åºï¿½
     return REG_data; 
 }
 //*********************************************************
 //
-//Á¬Ðø¶Á³öADXL345ÄÚ²¿¼ÓËÙ¶ÈÊý¾Ý£¬µØÖ··¶Î§0x32~0x37
+//ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ADXL345ï¿½Ú²ï¿½ï¿½ï¿½ï¿½Ù¶ï¿½ï¿½ï¿½ï¿½Ý£ï¿½ï¿½ï¿½Ö·ï¿½ï¿½Î§0x32~0x37
 //
 //*********************************************************
 void Multiple_Read_ADXL345(void)
 {   uchar i;
-    ADXL345_Start();                          //ÆðÊ¼ÐÅºÅ
-    ADXL345_SendByte(SlaveAddress);           //·¢ËÍÉè±¸µØÖ·+Ð´ÐÅºÅ
-    ADXL345_SendByte(0x32);                   //·¢ËÍ´æ´¢µ¥ÔªµØÖ·£¬´Ó0x32¿ªÊ¼	
-    ADXL345_Start();                          //ÆðÊ¼ÐÅºÅ
-    ADXL345_SendByte(SlaveAddress+1);         //·¢ËÍÉè±¸µØÖ·+¶ÁÐÅºÅ
-	 for (i=0; i<6; i++)                      //Á¬Ðø¶ÁÈ¡6¸öµØÖ·Êý¾Ý£¬´æ´¢ÖÐBUF
+    ADXL345_Start();                          //ï¿½ï¿½Ê¼ï¿½Åºï¿½
+    ADXL345_SendByte(SlaveAddress);           //ï¿½ï¿½ï¿½ï¿½ï¿½è±¸ï¿½ï¿½Ö·+Ð´ï¿½Åºï¿½
+    ADXL345_SendByte(0x32);                   //ï¿½ï¿½ï¿½Í´æ´¢ï¿½ï¿½Ôªï¿½ï¿½Ö·ï¿½ï¿½ï¿½ï¿½0x32ï¿½ï¿½Ê¼	
+    ADXL345_Start();                          //ï¿½ï¿½Ê¼ï¿½Åºï¿½
+    ADXL345_SendByte(SlaveAddress+1);         //ï¿½ï¿½ï¿½ï¿½ï¿½è±¸ï¿½ï¿½Ö·+ï¿½ï¿½ï¿½Åºï¿½
+	 for (i=0; i<6; i++)                      //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½È¡6ï¿½ï¿½ï¿½ï¿½Ö·ï¿½ï¿½ï¿½Ý£ï¿½ï¿½æ´¢ï¿½ï¿½BUF
     {
-        BUF[i] = ADXL345_RecvByte();          //BUF[0]´æ´¢0x32µØÖ·ÖÐµÄÊý¾Ý
+        BUF[i] = ADXL345_RecvByte();          //BUF[0]ï¿½æ´¢0x32ï¿½ï¿½Ö·ï¿½Ðµï¿½ï¿½ï¿½ï¿½ï¿½
         if (i == 5)
         {
-           ADXL345_SendACK(1);                //×îºóÒ»¸öÊý¾ÝÐèÒª»ØNOACK
+           ADXL345_SendACK(1);                //ï¿½ï¿½ï¿½Ò»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Òªï¿½ï¿½NOACK
         }
         else
         {
-          ADXL345_SendACK(0);                //»ØÓ¦ACK
+          ADXL345_SendACK(0);                //ï¿½ï¿½Ó¦ACK
        }
    }
-    ADXL345_Stop();                          //Í£Ö¹ÐÅºÅ
+    ADXL345_Stop();                          //Í£Ö¹ï¿½Åºï¿½
     Delay_fnus(5);
 }
 
 
 //*****************************************************************
 
-//³õÊ¼»¯ADXL345£¬¸ù¾ÝÐèÒªÇë²Î¿¼pdf½øÐÐÐÞ¸Ä************************
+//ï¿½ï¿½Ê¼ï¿½ï¿½ADXL345ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Òªï¿½ï¿½Î¿ï¿½pdfï¿½ï¿½ï¿½ï¿½ï¿½Þ¸ï¿½************************
 void Init_ADXL345(void)
 {                       //
-   Single_Write_ADXL345(0x31,0x0B);   //²âÁ¿·¶Î§,Õý¸º16g£¬13Î»Ä£Ê½
-   Single_Write_ADXL345(0x2C,0x08);   //ËÙÂÊÉè¶¨Îª25 ²Î¿¼pdf13Ò³
-   Single_Write_ADXL345(0x2D,0x08);   //Ñ¡ÔñµçÔ´Ä£Ê½   ²Î¿¼pdf24Ò³    //²Î¿¼14Ò³±í7½øÐÐÐÞ¸Ä
-   Single_Write_ADXL345(0x2E,0x80);   //Ê¹ÄÜ DATA_READY ÖÐ¶Ï
-   Single_Write_ADXL345(0x1E,0x02);   //X Æ«ÒÆÁ¿ ¸ù¾Ý²âÊÔ´«¸ÐÆ÷µÄ×´Ì¬Ð´Èëpdf29Ò³
-   Single_Write_ADXL345(0x1F,0x01);   //Y Æ«ÒÆÁ¿ ¸ù¾Ý²âÊÔ´«¸ÐÆ÷µÄ×´Ì¬Ð´Èëpdf29Ò³
-   Single_Write_ADXL345(0x20,0xFF);   //Z Æ«ÒÆÁ¿ ¸ù¾Ý²âÊÔ´«¸ÐÆ÷µÄ×´Ì¬Ð´Èëpdf29Ò³
+   Single_Write_ADXL345(0x31,0x0B);   //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Î§,ï¿½ï¿½ï¿½ï¿½16gï¿½ï¿½13Î»Ä£Ê½
+   Single_Write_ADXL345(0x2C,0x0A);   //ï¿½ï¿½ï¿½ï¿½ï¿½è¶¨Îª25 ï¿½Î¿ï¿½pdf13Ò³
+   Single_Write_ADXL345(0x2D,0x08);   //Ñ¡ï¿½ï¿½ï¿½Ô´Ä£Ê½   ï¿½Î¿ï¿½pdf24Ò³    //ï¿½Î¿ï¿½14Ò³ï¿½ï¿½7ï¿½ï¿½ï¿½ï¿½ï¿½Þ¸ï¿½
+   Single_Write_ADXL345(0x2E,0x80);   //Ê¹ï¿½ï¿½ DATA_READY ï¿½Ð¶ï¿½
+   Single_Write_ADXL345(0x1E,0x02);   //X Æ«ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½Ý²ï¿½ï¿½Ô´ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½×´Ì¬Ð´ï¿½ï¿½pdf29Ò³
+   Single_Write_ADXL345(0x1F,0x01);   //Y Æ«ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½Ý²ï¿½ï¿½Ô´ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½×´Ì¬Ð´ï¿½ï¿½pdf29Ò³
+   Single_Write_ADXL345(0x20,0xFF);   //Z Æ«ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½Ý²ï¿½ï¿½Ô´ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½×´Ì¬Ð´ï¿½ï¿½pdf29Ò³
 }
 //***********************************************************************
 void ReadData_x(void)
 {   
-  int16_t  dis_data;                       //±äÁ¿
-  Multiple_Read_ADXL345();       	//Á¬Ðø¶Á³öÊý¾Ý£¬´æ´¢ÔÚBUFÖÐ
+  int16_t  dis_data;                       //ï¿½ï¿½ï¿½ï¿½
+  Multiple_Read_ADXL345();       	//ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ý£ï¿½ï¿½æ´¢ï¿½ï¿½BUFï¿½ï¿½
     
   /* Sign-extend each axis: BUF is unsigned char, so without the int16_t cast a
      negative acceleration (e.g. 0xFFFF -> 65535) would be read as ~255000 mg. */
-  dis_data=(int16_t)((BUF[1]<<8)|BUF[0]);  //ºÏ³ÉÊý¾Ý   
-  temp_X=(double)dis_data*3.9;  //¼ÆËãÊý¾ÝºÍÏÔÊ¾,²é¿¼ADXL345¿ìËÙÈëÃÅµÚ4Ò³
+  dis_data=(int16_t)((BUF[1]<<8)|BUF[0]);  //ï¿½Ï³ï¿½ï¿½ï¿½ï¿½ï¿½   
+  temp_X=(double)dis_data*3.9;  //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ýºï¿½ï¿½ï¿½Ê¾,ï¿½é¿¼ADXL345ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Åµï¿½4Ò³
     
-  dis_data=(int16_t)((BUF[3]<<8)|BUF[2]);  //ºÏ³ÉÊý¾Ý   
-  temp_Y=(double)dis_data*3.9;  //¼ÆËãÊý¾ÝºÍÏÔÊ¾,²é¿¼ADXL345¿ìËÙÈëÃÅµÚ4Ò³
+  dis_data=(int16_t)((BUF[3]<<8)|BUF[2]);  //ï¿½Ï³ï¿½ï¿½ï¿½ï¿½ï¿½   
+  temp_Y=(double)dis_data*3.9;  //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ýºï¿½ï¿½ï¿½Ê¾,ï¿½é¿¼ADXL345ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Åµï¿½4Ò³
     
-  dis_data=(int16_t)((BUF[5]<<8)|BUF[4]);    //ºÏ³ÉÊý¾Ý   
-  temp_Z=(double)dis_data*3.9;  //¼ÆËãÊý¾ÝºÍÏÔÊ¾,²é¿¼ADXL345¿ìËÙÈëÃÅµÚ4Ò³
+  dis_data=(int16_t)((BUF[5]<<8)|BUF[4]);    //ï¿½Ï³ï¿½ï¿½ï¿½ï¿½ï¿½   
+  temp_Z=(double)dis_data*3.9;  //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ýºï¿½ï¿½ï¿½Ê¾,ï¿½é¿¼ADXL345ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Åµï¿½4Ò³
 }
 
 

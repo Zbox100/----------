@@ -62,14 +62,16 @@ QueueHandle_t UsartTimeHandler =NULL;   //Usart_Rx_f  -> SetTime_w
 void Adxl345_Work_f(void*arg)
 {	
         uint32_t Normal_num=0;                          //正常次数
-        unsigned int Number_of_detections = 0;			//检测次数
         // 在任务局部声明（替换原来的 unsigned char Flag） 
         uint8_t impact_x = 0 ; // X 轴冲击标志 
         uint8_t impact_y = 0 ; // Y 轴冲击标志
-        float buf = 0;                                 //缓冲区(上一帧合加速度)
         float mag = 0;                                 //三轴合加速度幅值,静止时约为1000mg
-        float diff = 0;                                //合加速度差分绝对值
-        uint8_t step_lock = 0;                         //计步锁定标志:一次波动只计1步,信号回落才解锁
+        float base = 1000.0f;                          //慢速基线(重力+姿态缓变),τ≈5s
+        float dev = 0;                                 //mag 相对基线的偏差:一次落脚只形成一个正半波
+        uint8_t armed = 1;                             //施密特状态:1=等待抬升,0=已计步待回落
+        const float STEP_TH = 100.0f;                  //抬升阈值(mg):静止约1000,走路摆动约±100~200,故取100
+        const float ARM_TH  = 50.0f;                   //回落阈值(mg):负向,取50使每步都能重新武装
+        const uint16_t STEP_REFRACTORY_MS = 300;       //两次计步最小间隔(ms)
         TickType_t lastStepTick = 0;                   //上一次计步的时刻(tick)
         TickType_t xLastWakeTime = xTaskGetTickCount(); //记录首次唤醒时刻,建立绝对时间基准网格
         const TickType_t xPeriod = pdMS_TO_TICKS(50);   //50ms 精确采样周期
@@ -100,8 +102,8 @@ void Adxl345_Work_f(void*arg)
 
         ReadData_x();  						            //三轴检测函数
         /* 量程校验:ADXL345 配 ±16g、3.9mg/LSB,单轴物理极值约 ±15974mg。
-           超出即视为 I2C 位错误造成的脏值,丢弃本轮样本(不更新 buf、不计步、
-           不发队列、不判冲击),避免脏值污染合加速度差分 */
+           超出即视为 I2C 位错误造成的脏值,丢弃本轮样本(不计步、不发队列、
+           不判冲击,也不更新基线 base),避免脏值污染步态判定 */
         if(temp_X < -17000 || temp_X > 17000 ||
            temp_Y < -17000 || temp_Y > 17000 ||
            temp_Z < -17000 || temp_Z > 17000)
@@ -109,19 +111,35 @@ void Adxl345_Work_f(void*arg)
             continue;               //回到循环顶,vTaskDelayUntil 保证 50ms 周期不变
         }
         mag = sqrtf(temp_X*temp_X + temp_Y*temp_Y + temp_Z*temp_Z);  //三轴合加速度,对握持方向不敏感
-        diff = fabsf(mag - buf);                               //合加速度差分绝对值
-        //      UsartPrintf(USART1, "mag=%.0f diff=%.0f\r\n", mag, diff); //调试打印:128字栈会被其256B缓冲+vprintf击穿导致死机,已停用
-        if(Number_of_detections&&(diff > 150)&&(step_lock == 0)){     //差分超过触发阈值且本次波动尚未计步
-            if((xTaskGetTickCount() - lastStepTick) >= pdMS_TO_TICKS(400)){  //距上次计步至少400ms
-                Normal_num++;                                      //正常次数++
-                lastStepTick = xTaskGetTickCount();                //记录本次计步时刻
-                step_lock = 1;                                     //锁定,信号回落前不再计步
+
+        /* 慢速基线:一阶低通,τ≈5s,只跟随重力/姿态的缓慢变化,不被步态振荡带走 */
+        base += (mag - base) * 0.01f;
+        dev = mag - base;                                      //相对基线的偏差(带符号)
+
+        /* 计步:施密特状态机,判据用"相对基线的偏差 dev",而不是 |Δmag|。
+           原因:|Δmag| 在一次落脚内有多个峰(落地/回弹/摆臂),它们的间距与相邻
+           两步的间距是同一量级(都 400~800ms),所以无论怎么调阈值和解锁条件都
+           只能二选一:解锁早了每步多计 2~3 次,解锁晚了走路时迟迟不解锁、计数
+           被拖到停下之后(1~2s 延迟)。根因是判据信号选错了。
+           带符号的 dev 一次落脚只形成一个正半波:
+             抬升越过 +STEP_TH 计一步,随即解除武装;
+             直到 dev 回落到 -ARM_TH 以下(步态摆动带来的负向半波)才重新武装。
+           同一步内的谐波压不到负阈值,故一次落脚只计一步;触发在抬升前沿,
+           显示延迟不因此增加。 */
+        if(!armed)
+        {
+            if(dev < -ARM_TH) armed = 1;                       //回落到负阈值以下:重新武装
+        }
+        else if(dev > STEP_TH)
+        {
+            if((xTaskGetTickCount() - lastStepTick) >= pdMS_TO_TICKS(STEP_REFRACTORY_MS))
+            {
+                Normal_num++;                                  //计一步
+                lastStepTick = xTaskGetTickCount();            //记录本次计步时刻
+                armed = 0;                                     //解除武装,等待负向回落
             }
         }
-        else Number_of_detections++;
-        if(diff < 30){step_lock = 0;}                              //迟滞解锁:差分回落到30以下才解除锁定
-        buf = mag;
-        xQueueSend(ADX1345Handler,&Normal_num,0);
+        xQueueOverwrite(ADX1345Handler,&Normal_num);   //深度1"仅保留最新值"队列用覆盖写,避免满队列丢值导致显示落后一拍
       
         /* ① 逐轴检测：各自独立标志 */ 
         impact_x = (temp_X > 700 ) ? 1 : 0 ;
@@ -141,6 +159,7 @@ void Adxl345_Work_f(void*arg)
 void Adxl345_Show_f( void * arg )
 {
     uint32_t dis_buf_R;
+    uint32_t last_shown = 0xFFFFFFFF;   //上次已显示值(取不可能的值,保证首次必刷)
     uint8_t  frame_drawn = 0;   //静态帧(边框/标签)是否已画:进页面清一次屏后置1,退出时置0
     while(1)
     {
@@ -166,10 +185,18 @@ void Adxl345_Show_f( void * arg )
             OLED_ShowString(2, 1, "Bushu:");
             OLED_ShowString(4, 1, "***************");
             frame_drawn = 1;
+            last_shown = 0xFFFFFFFF;    //重画静态帧后强制刷新一次数字
         }
-        xQueueReceive(ADX1345Handler,&dis_buf_R,portMAX_DELAY);
-        OLED_ShowNum(2,7,dis_buf_R,4);
-        vTaskDelay(100);
+        /* 只保留最新值:50ms 超时轮询代替"收一次就固定睡100ms",
+           且仅在数值变化时重画,消掉固定延时叠加的显示滞后 */
+        if(xQueueReceive(ADX1345Handler,&dis_buf_R,pdMS_TO_TICKS(50)) == pdTRUE)
+        {
+            if(dis_buf_R != last_shown)
+            {
+                OLED_ShowNum(2,7,dis_buf_R,4);
+                last_shown = dis_buf_R;
+            }
+        }
     }
 }
      
