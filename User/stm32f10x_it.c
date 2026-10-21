@@ -28,7 +28,6 @@
 #include "FreeRTOS.h"
 #include "task.h"
 #include "queue.h"
-extern QueueHandle_t KeyExitHandler;
 /** @addtogroup STM32F10x_StdPeriph_Template
   * @{
   */
@@ -176,17 +175,16 @@ void SysTick_Handler(void)
 void EXTI9_5_IRQHandler(void)
 {  
 
-    uint8_t KeyExit =  1;
+    /* exit is a single flag now; no local payload needed */
     
     OLED_Clear();   
     OLED_ShowString(2,5,"Exiting...");
     
-    xQueueSendFromISR(KeyExitHandler,&KeyExit,NULL);
+    g_exit_req = 1;      /* consumed by the active page task */
 
-    /* 与蓝牙 0 统一:物理退出键也置全局退出请求。时间设置中的 SetTime_w 只认
-       global_var==1,看不到 KeyExitHandler 这条队列,补上这句才能即时退出 */
-    global_var = 1;
-
+    /* 物理退出键与蓝牙 0 统一到同一个退出请求 g_exit_req:
+       时间设置中的 SetTime_w 也只看这个标志,置位后能立刻返回 */
+    
     EXTI_ClearITPendingBit(EXTI_Line8);
     
 }

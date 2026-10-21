@@ -25,7 +25,9 @@ int global_var = 0;
 // FreeRTOS队列管理头文件：包含队列创建、数据发送/接收等任务间通信相关接口
 #include "queue.h"
 /////////////////////全局变量//////////////////////////////////
-uint16_t KeyExit_R = 0; 
+/* 退出请求:唯一来源。ISR(物理退出键)或 Usart_Rx_f(蓝牙 0)置 1,
+   当前页面任务消费后清零。替代原来的 KeyExit_R 队列 + global_var==1 双路径 */
+volatile uint8_t g_exit_req = 0;
 uint8_t IN = 0;
 extern BloodData g_blooddata;
 /////////////////////专用功能任务//////////////////////////////
@@ -51,7 +53,6 @@ TaskHandle_t Usart_Rx_fHandler;
 ////////////////////队列实现///////////////////////////////////
 QueueHandle_t QueueGetHandler  =NULL;
 QueueHandle_t KeyGetHandler    =NULL;
-QueueHandle_t KeyExitHandler   =NULL;
 QueueHandle_t ADX1345Handler   =NULL;
 QueueHandle_t DTH11Handler     =NULL;
 QueueHandle_t Max30102Handler  =NULL;
@@ -197,11 +198,10 @@ void Adxl345_Show_f( void * arg )
     uint8_t  frame_drawn = 0;   //静态帧(边框/标签)是否已画:进页面清一次屏后置1,退出时置0
     while(1)
     {
-        xQueueReceive(KeyExitHandler,&KeyExit_R,NULL);
-        if((KeyExit_R == 1)||(global_var==1))
+        if(g_exit_req)
         {
             taskENTER_CRITICAL();
-            KeyExit_R = 0;global_var = 0;
+            g_exit_req = 0;global_var = 0;
             GPIO_ResetBits(GPIOB, GPIO_Pin_12);
 			GPIO_SetBits(GPIOB, GPIO_Pin_1);
             OLED_Clear();
@@ -273,7 +273,17 @@ void Time_Work_f( void * arg ) //时间读取任务
 
     while(1)
     {
-    MyRTC_ReadTime();                                
+    /* 时间修改期间禁止刷新全局数组:MyRTC_ReadTime 会把 MyRTC_Time[]
+       整组写回当前 RTC 值,而 SetTime_w 正是逐字节往这个数组里填新时间。
+       原实现靠 vTaskSuspendAll 屏蔽覆盖,改用 vTaskDelay 让出 CPU 后必须显式跳过,
+       否则每 1s 都会把刚输入的字段冲掉,修改结果必然是错的。
+       注意判据必须是 ==0 而不是 !=2:收完最后一个字节后 global_var 已置 9,
+       而 SetTime_w 之后还有两段 500ms 的 vTaskDelay,合计正好 1s,
+       足以让本任务插进来把整组字段刷回旧值,再交给 MyRTC_SetTime 写回 RTC */
+    if(global_var == 0)
+    {
+        MyRTC_ReadTime();
+    }
     vTaskDelay(1000);  
     }
           
@@ -292,11 +302,9 @@ void Time_Show_f( void*arg ) //时间显示任务任务
         frame_drawn = 0;    //SetTime_w 会往第4行写 "Exiting..." 再涂成空格,静态帧已脏,下一轮重画
         }
         
-        KeyExit_R = 0;      //先清零:非阻塞接收失败时会保留旧值,清掉避免上一轮的 1 误触发退出
-        xQueueReceive(KeyExitHandler,&KeyExit_R,pdMS_TO_TICKS(50));
-        if((KeyExit_R == 1)||(global_var==1))   //global_var==1 是蓝牙发 0 的退出路径,SetTime_w 提前返回时靠它退出
+        if(g_exit_req)      //ISR(物理退出键)或蓝牙 0 置位;SetTime_w 提前返回后也靠它退出
         {taskENTER_CRITICAL();
-        KeyExit_R = 0;global_var = 0;OLED_Clear();frame_drawn = 0;vTaskResume(Menu_handling_fHandler);vTaskResume(Key_GetNum_fHandler);vTaskSuspend(NULL);
+        g_exit_req = 0;global_var = 0;OLED_Clear();frame_drawn = 0;vTaskResume(Menu_handling_fHandler);vTaskResume(Key_GetNum_fHandler);vTaskSuspend(NULL);
         taskEXIT_CRITICAL();}
         /* 局部刷新:整屏清除 + 静态标签只在进页面时做一次,循环内只重写 6 个时间数字 */
         if(!frame_drawn)
@@ -308,7 +316,12 @@ void Time_Show_f( void*arg ) //时间显示任务任务
             OLED_ShowString(4, 1, "***************");
             frame_drawn = 1;
         }
-        xQueueReceive(QueueGetHandler,MyRTC_R,portMAX_DELAY);
+        /* 100ms 超时而非 portMAX_DELAY:时间工作任务每 1s 才送一次新值,
+           死等会让退出请求最长压 1s 才被本任务看到;超时后回顶部检查 g_exit_req */
+        if(xQueueReceive(QueueGetHandler,MyRTC_R,pdMS_TO_TICKS(100)) != pdTRUE)
+        {
+            continue;
+        }
         OLED_ShowNum(1, 6, MyRTC_R[0], 4);     // 年
         OLED_ShowNum(1, 11, MyRTC_R[1], 2);    // 月
         OLED_ShowNum(1, 14, MyRTC_R[2], 2);    // 日
@@ -340,11 +353,10 @@ void DTH11_Show_f(void*arg)
 
     while(1)
     {   
-        xQueueReceive(KeyExitHandler,&KeyExit_R,NULL);
-        if((KeyExit_R == 1)||(global_var==1))
+        if(g_exit_req)
         {
             taskENTER_CRITICAL();
-            KeyExit_R = 0;global_var = 0;          
+            g_exit_req = 0;global_var = 0;          
             OLED_Clear();
             frame_drawn = 0;        //离屏清场:静态帧随之失效,下次进页面重画
             vTaskResume(Menu_handling_fHandler);
@@ -419,11 +431,10 @@ void Max30102_Show_f(void*arg)
    uint8_t frame_drawn = 0;     //静态帧是否已画:退出清屏后置0,下次进页面重画
    while(1)
    {
-        xQueueReceive(KeyExitHandler,&KeyExit_R,NULL);
-        if((KeyExit_R == 1)||(global_var==1))
+        if(g_exit_req)
         {
             taskENTER_CRITICAL();
-            KeyExit_R = 0;global_var = 0;            
+            g_exit_req = 0;global_var = 0;            
             OLED_Clear();
             frame_drawn = 0;    //离屏清场:静态帧随之失效,下次进页面重画
             vTaskResume(Menu_handling_fHandler);
@@ -433,7 +444,7 @@ void Max30102_Show_f(void*arg)
         }  
     /* 原为 xQueueReceive(...,portMAX_DELAY) 死等:模块未连接时采集任务不会往队列里送数据
        (Max30102_Work_f 在位检测不通过就直接跳过采样),本任务会永远阻塞在这里,
-       既刷不出界面,也回不到循环顶部判断退出条件(KeyExit_R/global_var==1);
+       既刷不出界面,也回不到循环顶部判断退出条件(g_exit_req);
        而退出键中断已经先把屏幕清掉并写上"Exiting...",于是页面卡死在这行字上。
        改为带超时接收:超时也会回到循环顶部重新判断退出条件 */
     /* 局部刷新:静态标签只在进页面时画一次,数据到达时只重写 SpO2 与心率两个数字 */
@@ -457,7 +468,7 @@ void Max30102_Show_f(void*arg)
 }
 
 /* 串口接收分发任务:ISR 只把字节投进 UsartRxHandler,由本任务决定去向。
-   必须常驻运行 —— Show 页面下 Menu_handling_f 已挂起,退出指令只能靠本任务置 global_var */
+   必须常驻运行 —— Show 页面下 Menu_handling_f 已挂起,退出指令只能靠本任务置 g_exit_req */
 void Usart_Rx_f(void *arg)
 {
     uint8_t ch;
@@ -470,7 +481,7 @@ void Usart_Rx_f(void *arg)
         {
             OLED_Clear();
             OLED_ShowString(2,5,"Exiting...");
-            global_var = 1;
+            g_exit_req = 1;                     //与物理退出键统一到同一退出请求
         }
         else if(global_var == 2)                //时间设置进行中:字节原样转给 SetTime_w,不做菜单解码
         {
@@ -736,11 +747,10 @@ int main(void)
     
     QueueGetHandler = xQueueCreate(1, sizeof(uint16_t) * 6);
     KeyGetHandler   = xQueueCreate(1, sizeof(uint8_t)  * 1);
-    KeyExitHandler  = xQueueCreate(1, sizeof(uint8_t)  * 1); 
     ADX1345Handler  = xQueueCreate(1, sizeof(uint32_t)  * 1); 
     DTH11Handler    = xQueueCreate(1, sizeof(DHT11_Data_TypeDef)  * 1); 
     Max30102Handler = xQueueCreate(1, sizeof(BloodData)  * 1);
-    if((QueueGetHandler == NULL) || (KeyGetHandler == NULL) || (KeyExitHandler == NULL) ||
+    if((QueueGetHandler == NULL) || (KeyGetHandler == NULL) ||
        (ADX1345Handler == NULL) || (DTH11Handler == NULL) || (Max30102Handler == NULL))
     {
         /* 与上面三条串口队列同样的处理:OLED 已可用,先显示再停机,

@@ -14,10 +14,23 @@ extern QueueHandle_t QueueGetHandler;
 uint16_t MyRTC_Time[] = {2024, 3, 1, 18, 5, 00};	
 void MyRTC_Init(void);
 void MyRTC_SetTime(void);				//函数声明
+void MyRTC_ReadTime(void);
 
 
 void SetTime_w()
 {
+    /* 每一步在 OLED 第3行给出明确的待输入字段:否则进入修改后屏幕上只有停止走动的旧时间,
+       看起来和"没进去"完全一样(串口提示在 HEX 显示模式下也看不清) */
+    static const char * const step_name[8] = {
+        "Edit:Start     ",   //0:入口指令 0x05 本身
+        "Edit:Year low  ",   //1:年份低两位(BCD)
+        "Edit:Year high ",   //2:年份高两位(BCD)
+        "Edit:Month     ",   //3:月
+        "Edit:Day       ",   //4:日
+        "Edit:Hour      ",   //5:时
+        "Edit:Minute    ",   //6:分
+        "Edit:Second    "    //7:秒,收完自动写RTC
+    };
 		
     uint8_t key_count = 0; // 用于跟踪接收到的按键数量
     uint16_t wait;         // 等待上位机输入的超时计数(单位:1ms)
@@ -35,12 +48,13 @@ void SetTime_w()
 						OLED_ShowString(4,5,"          ");
             break; // 退出循环
         }
+				OLED_ShowString(3,1,(char *)step_name[key_count]);   //提示本字节对应字段
 				wait = 30000;
-				while((wait > 0) && (global_var != 1) && (xQueueReceive(UsartTimeHandler,&rx_byte,pdMS_TO_TICKS(1)) != pdTRUE))
+				while((wait > 0) && (g_exit_req == 0) && (xQueueReceive(UsartTimeHandler,&rx_byte,pdMS_TO_TICKS(1)) != pdTRUE))
 				{
 				    wait--;                  //队列接收带1ms超时,等效原来的 vTaskDelay(1)
 				}
-				if(global_var == 1)          //蓝牙发 0 的退出指令:立刻返回,不清标志,由 Time_Show_f 完成退出
+				if(g_exit_req)          //物理退出键或蓝牙 0:立刻返回,不清标志,由 Time_Show_f 完成退出
 				{
 				    return;
 				}
@@ -50,6 +64,12 @@ void SetTime_w()
 				    return;
 				}
 				data = rx_byte;              //把队列取到的字节交给下面的 BCD 转码
+				if(key_count >= 1)           //回显原始字节,确认上位机发的是 BCD 值而不是 ASCII
+				{
+				    OLED_ShowString(4,1,"In:0x");
+				    OLED_ShowHexNum(4,6,rx_byte,2);
+				    OLED_ShowString(4,8,"        ");
+				}
         // 根据接收到的数据更新时间
         switch(key_count)
         {
@@ -80,7 +100,7 @@ void SetTime_w()
                 MyRTC_Time[4] = (data/16*10+data%16);
 								UsartPrintf(USART_DEBUG,"  What you entered is:%d and Input second and will exit after\r\n",MyRTC_Time[4]);
 								break;
-						case 7:
+            case 7:
                 MyRTC_Time[5] = (data/16*10+data%16);
 								UsartPrintf(USART_DEBUG,"  What you entered is:%d \r\n",MyRTC_Time[5]);
                 global_var = 9; // 设置退出标志
@@ -98,6 +118,8 @@ void SetTime_w()
         vTaskDelay(pdMS_TO_TICKS(500)); // 等待一段时间
     }
     MyRTC_SetTime(); // 设置RTC时间
+		MyRTC_ReadTime();// 立刻把新时间回读进数组并刷新显示队列,不必等 Time_Work_f 下一拍
+		global_var = 0;  // 修改流程结束,清回普通显示态,避免 9 残留到下一轮
 		
     return;
 }
@@ -195,8 +217,7 @@ void MyRTC_Init(void)
 void MyRTC_SetTime(void)
 {
 	time_t time_cnt;		//定义秒计数器数据类型
-	struct tm time_date;	//定义日期时间数据类型
-	
+	struct tm time_date = {0};	//定义日期时间数据类型:必须清零,mktime 会读 tm_isdst,栈上残留值会带来 ±1 小时偏移
 	
 	time_date.tm_year = MyRTC_Time[0] - 1900;		//将数组的时间赋值给日期时间结构体
 	time_date.tm_mon = MyRTC_Time[1] - 1;

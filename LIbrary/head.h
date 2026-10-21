@@ -3,10 +3,10 @@
 /**
   ******************************************************************************
   * @file    head.h
-  * @author  ÕÅÕÕ¾ü
+  * @author  ï¿½ï¿½ï¿½Õ¾ï¿½
   * @version V1.0.0
-  * @date    2024Äê4ÔÂ23ÈÕ14:22:13
-  * @brief   extern ±äÁ¿ÉùÃ÷
+  * @date    2024ï¿½ï¿½4ï¿½ï¿½23ï¿½ï¿½14:22:13
+  * @brief   extern ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
   ******************************************************************************
   */
 #include "FreeRTOS.h"
@@ -14,8 +14,9 @@
 #include "queue.h"
 
 extern int global_var;
+extern volatile uint8_t g_exit_req;   /* é€€å‡ºè¯·æ±‚:ISR/è“ç‰™ç½®ä½,é¡µé¢ä»»åŠ¡æ¶ˆè´¹åŽæ¸…é›¶ */
 
-/* ´®¿Ú½ÓÊÕÁ´Â·¶ÓÁÐ:ISR Ö»Í¶µÝ×Ö½Ú,È¥ÏòÓÉ³£×¤ÈÎÎñ Usart_Rx_f ¾ö¶¨ */
+/* ï¿½ï¿½ï¿½Ú½ï¿½ï¿½ï¿½ï¿½ï¿½Â·ï¿½ï¿½ï¿½ï¿½:ISR Ö»Í¶ï¿½ï¿½ï¿½Ö½ï¿½,È¥ï¿½ï¿½ï¿½É³ï¿½×¤ï¿½ï¿½ï¿½ï¿½ Usart_Rx_f ï¿½ï¿½ï¿½ï¿½ */
 extern QueueHandle_t UsartRxHandler;     /* USART1 ISR -> Usart_Rx_f */
 extern QueueHandle_t UsartMenuHandler;   /* Usart_Rx_f  -> Menu_handling_f */
 extern QueueHandle_t UsartTimeHandler;   /* Usart_Rx_f  -> SetTime_w */
