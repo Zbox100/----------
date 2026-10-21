@@ -120,7 +120,7 @@
 //#define configTASK_NOTIFICATION_ARRAY_ENTRIES   3	
 
 //1 使用互斥信号量
-//#define configUSE_MUTEXES                       0	
+#define configUSE_MUTEXES                       1	
 
 //1 使用递归互斥信号量 
 //#define configUSE_RECURSIVE_MUTEXES             0

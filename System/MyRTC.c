@@ -8,6 +8,7 @@
 #include "FreeRTOS.h"
 #include "task.h"
 #include "queue.h"
+#include "semphr.h"
 /*部分引用自江科大*/
 extern QueueHandle_t QueueGetHandler;
 
@@ -15,6 +16,28 @@ uint16_t MyRTC_Time[] = {2024, 3, 1, 18, 5, 00};
 void MyRTC_Init(void);
 void MyRTC_SetTime(void);				//函数声明
 void MyRTC_ReadTime(void);
+
+/* MyRTC_Time[] 被时间读取任务(Time_Work_f)与时间修改流程(SetTime_w)共同访问:
+   前者整组覆盖+发布显示,后者逐字段构建新时间。用互斥量保证"整组更新"与"整组快照"不会
+   交错出半个新半个旧的时间。互斥量在 MyRTC_Init 中创建(调度器启动前),
+   若堆不足创建失败则退化为不加锁,保持原有功能不中断 */
+static SemaphoreHandle_t MyRTC_Mutex = NULL;
+
+static void MyRTC_Lock(void)
+{
+    if(MyRTC_Mutex != NULL)
+    {
+        xSemaphoreTake(MyRTC_Mutex, portMAX_DELAY);
+    }
+}
+
+static void MyRTC_Unlock(void)
+{
+    if(MyRTC_Mutex != NULL)
+    {
+        xSemaphoreGive(MyRTC_Mutex);
+    }
+}
 
 
 void SetTime_w()
@@ -36,6 +59,9 @@ void SetTime_w()
     uint16_t wait;         // 等待上位机输入的超时计数(单位:1ms)
     uint8_t rx_byte = 0;   // 从队列取出的原始字节
     uint16_t data = 0;     // BCD 转码用,局部变量(原全局 data 已删除)
+
+    /* 编辑期间的独占权由 global_var==2 保证:Time_Work_f 只在 global_var==0 时回读数组,
+       所以这里逐字段写入不会与读取任务并发;互斥量保护的是"整组覆盖+发布队列"与"整组快照" */
 
     while(1)
     {   
@@ -133,6 +159,10 @@ void SetTime_w()
   */
 void MyRTC_Init(void)
 {
+	/* 先建互斥量:本函数在调度器启动前调用,此时建队列/互斥量均合法。
+	   之后 MyRTC_SetTime/MyRTC_ReadTime 才可能被任务上下文调用 */
+	MyRTC_Mutex = xSemaphoreCreateMutex();
+
 	/*开启时钟*/
 	RCC_APB1PeriphClockCmd(RCC_APB1Periph_PWR, ENABLE);		//开启PWR的时钟
 	RCC_APB1PeriphClockCmd(RCC_APB1Periph_BKP, ENABLE);		//开启BKP的时钟
@@ -218,17 +248,26 @@ void MyRTC_SetTime(void)
 {
 	time_t time_cnt;		//定义秒计数器数据类型
 	struct tm time_date = {0};	//定义日期时间数据类型:必须清零,mktime 会读 tm_isdst,栈上残留值会带来 ±1 小时偏移
-	
-	time_date.tm_year = MyRTC_Time[0] - 1900;		//将数组的时间赋值给日期时间结构体
-	time_date.tm_mon = MyRTC_Time[1] - 1;
-	time_date.tm_mday = MyRTC_Time[2];
-	time_date.tm_hour = MyRTC_Time[3];
-	time_date.tm_min = MyRTC_Time[4];
-	time_date.tm_sec = MyRTC_Time[5];
+	uint16_t t[6];			//数组快照
+	uint8_t  i;
+
+	/* 只在互斥区内取一份一致快照:mktime/RTC 写入耗时较长,不应占用互斥量 */
+	MyRTC_Lock();
+	for(i = 0; i < 6; i++)
+	{
+		t[i] = MyRTC_Time[i];
+	}
+	MyRTC_Unlock();
+
+	time_date.tm_year = t[0] - 1900;		//将数组的时间赋值给日期时间结构体
+	time_date.tm_mon = t[1] - 1;
+	time_date.tm_mday = t[2];
+	time_date.tm_hour = t[3];
+	time_date.tm_min = t[4];
+	time_date.tm_sec = t[5];
 	
 	time_cnt = mktime(&time_date);	//调用mktime函数，将日期时间转换为秒计数器格式
 																								
-	
 	RTC_SetCounter(time_cnt);						//将秒计数器写入到RTC的CNT中
 	RTC_WaitForLastTask();							//等待上一次操作完成
 }
@@ -244,7 +283,10 @@ void MyRTC_ReadTime(void)
 	time_t time_cnt;		//定义秒计数器数据类型
 	struct tm time_date;	//定义日期时间数据类型
 	
-    
+	/* localtime 返回的是库内静态缓冲,且数组与显示队列必须整体刷新,
+	   因此"读计数→转日期→覆盖数组→发布队列"整段放在互斥区内(均为短操作,无阻塞等待) */
+	MyRTC_Lock();
+
 	time_cnt = RTC_GetCounter();		//读取RTC的CNT，获取当前的秒计数器
 	
 	time_date = *localtime(&time_cnt);				//使用localtime函数，将秒计数器转换为日期时间格式
@@ -257,7 +299,8 @@ void MyRTC_ReadTime(void)
 	MyRTC_Time[5] = time_date.tm_sec;
     
     xQueueOverwrite(QueueGetHandler,MyRTC_Time);
-    
 
+	MyRTC_Unlock();
+    
     return;
 }
