@@ -48,7 +48,6 @@ TaskHandle_t Start_MyTaskListHandler;
 TaskHandle_t Time_modification_fHandler;
 TaskHandle_t Key_GetNum_fHandler;
 TaskHandle_t beep_Work_fHandler;
-static uint8_t beep_Cnt = 0;    //beep 报警已翻转轮数:达到上限后自挂起,防止误触发后无限报警
 TaskHandle_t Usart_Rx_fHandler;
 ////////////////////队列实现///////////////////////////////////
 QueueHandle_t QueueGetHandler  =NULL;
@@ -179,9 +178,9 @@ void Adxl345_Work_f(void*arg)
         impact_x = (temp_X > 700 ) ? 1 : 0 ;
         impact_y = (temp_Y > 700 ) ? 1 : 0 ;
 
-        /* ② 报警触发：任一轴冲击且使能 */
+        /* ② 报警触发：任一轴冲击且使能。
+           beep 任务自身带 2s tick 硬上限,这里只负责唤醒,不再维护轮数计数 */
         if ((impact_x || impact_y) && IN) {
-            beep_Cnt = 0;                       //新一轮报警从0开始计数,保证每次触发都是完整时长
             vTaskResume(beep_Work_fHandler);
             impact_x = 0 ;
             impact_y = 0 ;
@@ -629,20 +628,31 @@ void Key_GetNum_f(void *arg)  //时间修改任务
 }
 void beep_Work_f(void* arg)
 {	
+    TickType_t t_start;
+
     while(1)
     {	
-    if(beep_Cnt >= 10) vTaskSuspend(NULL);  //自限:翻转10轮(每轮约200ms,合计约2s)后自挂起,不再无限报警
-    beep_Cnt++;
-    UsartPrintf(USART1, "  FALLING DOWN! \r\n");    
-    OLED_ShowString(3, 2, "FALLING DOWN!");
-	GPIO_ResetBits(GPIOB, GPIO_Pin_12);						
-	GPIO_ResetBits(GPIOB, GPIO_Pin_1);						
-	vTaskDelay(100);
-    OLED_ShowString(3, 2, "FALLING DOWN!");        
-	GPIO_SetBits(GPIOB, GPIO_Pin_12);							
-	GPIO_SetBits(GPIOB, GPIO_Pin_1);
-	vTaskDelay(100);																
-		
+        /* 自限:每次被唤醒最多响 2s,到点必停并自挂起。
+           用 tick 差做判据而不是"翻转轮数":原来的轮数上限依赖全局 beep_Cnt,
+           而它会被触发方清零,理论上可被重复触发无限续期;tick 差值在本次唤醒内
+           只由本任务自己维护,外部 vTaskResume 无法改变,上限是硬性的 */
+        t_start = xTaskGetTickCount();
+        while((xTaskGetTickCount() - t_start) < pdMS_TO_TICKS(2000))
+        {
+            UsartPrintf(USART1, "  FALLING DOWN! \r\n");    
+            OLED_ShowString(3, 2, "FALLING DOWN!");
+            GPIO_ResetBits(GPIOB, GPIO_Pin_12);						
+            GPIO_ResetBits(GPIOB, GPIO_Pin_1);						
+            vTaskDelay(pdMS_TO_TICKS(100));
+            OLED_ShowString(3, 2, "FALLING DOWN!");        
+            GPIO_SetBits(GPIOB, GPIO_Pin_12);							
+            GPIO_SetBits(GPIOB, GPIO_Pin_1);
+            vTaskDelay(pdMS_TO_TICKS(100));
+        }
+        /* 收尾固定在静音电平,避免恰好停在"响"的半周期上被挂起 */
+        GPIO_SetBits(GPIOB, GPIO_Pin_12);
+        GPIO_SetBits(GPIOB, GPIO_Pin_1);
+        vTaskSuspend(NULL);     //自限结束:挂起,等待下一次触发唤醒
     }    															
 }
 
