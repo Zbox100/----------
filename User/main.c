@@ -49,7 +49,7 @@ TaskHandle_t Time_modification_fHandler;
 TaskHandle_t Key_GetNum_fHandler;
 TaskHandle_t beep_Work_fHandler;
 TaskHandle_t Usart_Rx_fHandler;
-////////////////////队列实现///////////////////////////////////
+////////////////////队列实现//////////////////////////////////////////////////////////
 QueueHandle_t QueueGetHandler  =NULL;
 QueueHandle_t KeyGetHandler    =NULL;
 QueueHandle_t ADX1345Handler   =NULL;
