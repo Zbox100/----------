@@ -4,34 +4,34 @@
 /**
   ******************************************************************************
   * @file    blood.c
-  * @author  锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷
-  * @brief   血液锟斤拷锟斤拷锟斤拷转锟斤拷锟斤拷锟斤拷
+  * @author  智能手环项目组
+  * @brief   血氧/心率算法实现
   ******************************************************************************
   */
 
 #include "FreeRTOS.h"
 #include "queue.h"
-#include "task.h"                         //??vTaskDelay
+//使用 vTaskDelay 让出 CPU
 
 extern QueueHandle_t Max30102Handler;
-uint16_t g_fft_index = 0;         	 	//fft锟斤拷锟斤拷锟斤拷锟斤拷卤锟?
+uint16_t g_fft_index = 0;         	 	//FFT 输入数组的写入下标
 
-struct compx s1[FFT_N+16];           	//FFT锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷S[1]锟斤拷始锟斤拷牛锟斤拷锟斤拷荽锟叫★拷约锟斤拷锟斤拷锟?
-struct compx s2[FFT_N+16];           	//FFT锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷S[1]锟斤拷始锟斤拷牛锟斤拷锟斤拷荽锟叫★拷约锟斤拷锟斤拷锟?
+struct compx s1[FFT_N+16];           	//红光通道 FFT 输入/输出数组(留 16 点余量)
+struct compx s2[FFT_N+16];           	//红外通道 FFT 输入/输出数组(留 16 点余量)
 
 struct
 {
-	float 	Hp	;			//血锟届蛋锟斤拷	
-	float 	HpO2;			//锟斤拷锟斤拷血锟届蛋锟斤拷
+	float 	Hp	;			//血氧直流分量
+	float 	HpO2;			//血氧交流分量
 	
-}g_BloodWave;//血液锟斤拷锟斤拷锟斤拷锟斤拷
+}g_BloodWave;//血液波形特征量
 
-BloodData g_blooddata = {0};					//血液锟斤拷锟捷存储
+BloodData g_blooddata = {0};					//血液数据存储
 
-#define CORRECTED_VALUE			47   			//锟疥定血液锟斤拷锟斤拷锟斤拷锟斤拷
+#define CORRECTED_VALUE			47   			//血氧校正系数
 
 /*funcation start ------------------------------------------------------------*/
-//血液锟斤拷锟斤拷锟较拷锟斤拷锟?
+//血液数据采集
 void blood_data_update(void)
 {
 	uint16_t wait_ms = 0;                 //连续等待新样本的时长(ms),用于超时退出
@@ -64,12 +64,12 @@ void blood_data_update(void)
 	}
 }
 
-//血液锟斤拷息转锟斤拷
+//血液数据转换(去直流/平滑/FFT/计算心率与血氧)
 void blood_data_translate(void)
 {	
 	float n_denom;
 	uint16_t i;
-	//直锟斤拷锟剿诧拷
+//直流分量
 	float dc_red =0; 
 	float dc_ir =0;
 	float ac_red =0; 
@@ -88,7 +88,7 @@ void blood_data_translate(void)
 		s2[i].real =  s2[i].real - dc_ir ; 
 	}
 	
-	//锟狡讹拷平锟斤拷锟剿诧拷
+//3 点滑动平均
 //	UsartPrintf(USART_DEBUG,"***********8 pt Moving Average red******************************************************\r\n");
 //	
 	for(i = 1;i < FFT_N-1;i++) 
@@ -99,7 +99,7 @@ void blood_data_translate(void)
 			n_denom= ( s2[i-1].real + 2*s2[i].real + s2[i+1].real);
 			s2[i].real=  n_denom/4.00; 			
 	}
-	//锟剿碉拷平锟斤拷锟剿诧拷
+//8 点滑动平均
 	for(i = 0;i < FFT_N-8;i++) 
 	{
 			n_denom= ( s1[i].real+s1[i+1].real+ s1[i+2].real+ s1[i+3].real+ s1[i+4].real+ s1[i+5].real+ s1[i+6].real+ s1[i+7].real);
@@ -116,19 +116,19 @@ void blood_data_translate(void)
 //		UsartPrintf(USART_DEBUG,"%f\r\n",s2[i].real);	
 //	}
 //	UsartPrintf(USART_DEBUG,"**************************************************************************************************\r\n");
-	//锟斤拷始锟戒换锟斤拷示	
+//开始频谱变换
 	g_fft_index = 0;	
-	//锟斤拷锟劫革拷锟斤拷叶锟戒换
+//对两个通道做 FFT
 	FFT(s1);
 	FFT(s2);
-	//锟斤拷平锟斤拷
+//取幅值
 // UsartPrintf(USART_DEBUG,"FFT start ****************************************************************************************************\r\n");
 	for(i = 0;i < FFT_N;i++) 
 	{
 		s1[i].real=sqrtf(s1[i].real*s1[i].real+s1[i].imag*s1[i].imag);
 		s2[i].real=sqrtf(s2[i].real*s2[i].real+s2[i].imag*s2[i].imag);
 	}
-	//锟斤拷锟姐交锟斤拷锟斤拷锟斤拷
+//交流分量
 	for (i=1 ; i<FFT_N ; i++ ) 
 	{
 		ac_red += s1[i].real ;
@@ -153,7 +153,7 @@ void blood_data_translate(void)
 	}
 	
 	//UsartPrintf(USART_DEBUG,"%d\r\n",(int)i);
-	//锟斤拷取锟斤拷值锟斤拷暮锟斤拷锟斤拷锟? 锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟轿?
+//取谱峰对应频率(心率)
 	int s1_max_index = find_max_num_index(s1, 15);
 	int s2_max_index = find_max_num_index(s2, 15);
 //	UsartPrintf(USART_DEBUG,"%d\r\n",s1_max_index);
@@ -172,14 +172,12 @@ void blood_data_translate(void)
 void blood_Loop(void)
 {
 	
-	//血液锟斤拷息锟斤拷取
+//血液数据采集
 	blood_data_update();
-	//血液锟斤拷息转锟斤拷
+//血液数据转换
 	blood_data_translate();
-	//锟斤拷示血液状态锟斤拷息
+//更新血液状态信息
 	g_blooddata.SpO2 = (g_blooddata.SpO2 > 99.99) ? 99.99:g_blooddata.SpO2;
-    UsartPrintf(USART_DEBUG,"Heart rate: %3d",g_blooddata.heart);
-    UsartPrintf(USART_DEBUG,"SpO2: %0.2f",g_blooddata.SpO2);
     
     xQueueOverwrite(Max30102Handler,&g_blooddata);
 	

@@ -10,6 +10,10 @@ typedef struct
     uint8_t check_sum;   // 校验和
 } DHT11_Data_TypeDef;
 
+/* 串口综合显示用的最新温湿度快照 */
+extern volatile DHT11_Data_TypeDef g_dht11_latest;
+extern volatile uint8_t g_dht11_valid;
+
 
 uint8_t DHT11_DATA_IN(void);
 void DHT_GPIO_Config_Output( void );

@@ -29,6 +29,7 @@ int global_var = 0;
    位由 Usart_Rx_f 在任务上下文置位,4 个 Show 任务都能观察到,不再有"谁清谁得"的单消费问题 */
 uint8_t IN = 0;
 extern BloodData g_blooddata;
+volatile uint32_t g_step_count = 0;   /* 串口综合显示用的步数快照(Adxl345_Work_f 更新) */
 /////////////////////专用功能任务//////////////////////////////
 TaskHandle_t Time_Work_fHandler;
 TaskHandle_t Time_Show_fHandler;
@@ -185,6 +186,7 @@ void Adxl345_Work_f(void*arg)
             if((xTaskGetTickCount() - lastStepTick) >= pdMS_TO_TICKS(STEP_REFRACTORY_MS))
             {
                 Normal_num++;                                  //计一步
+                g_step_count = Normal_num;                      //同步给串口综合显示
                 lastStepTick = xTaskGetTickCount();            //记录本次计步时刻
                 armed = 0;                                     //解除武装,等待负向回落
             }
@@ -280,6 +282,28 @@ void Time_Work_f( void * arg ) //时间读取任务
     if(global_var == 0)
     {
         MyRTC_ReadTime();
+
+        /* 综合遥测:每秒一行,把时间/步数/心率/血氧/温湿度汇总输出,
+           取代原先各模块分散打印(DHT11 读成功、blood_Loop 每轮心率/血氧) */
+        {
+            uint8_t hi = 0, hd = 0, ti = 0, td = 0;
+
+            if(g_dht11_valid)
+            {
+                hi = g_dht11_latest.humi_int;
+                hd = g_dht11_latest.humi_deci;
+                ti = g_dht11_latest.temp_int;
+                td = g_dht11_latest.temp_deci;
+            }
+
+            UsartPrintf(USART1,
+                "[%04u-%02u-%02u %02u:%02u:%02u] Step=%lu HR=%d SpO2=%.1f T=%u.%uC H=%u.%u%%\r\n",
+                MyRTC_Time[0], MyRTC_Time[1], MyRTC_Time[2],
+                MyRTC_Time[3], MyRTC_Time[4], MyRTC_Time[5],
+                (unsigned long)g_step_count,
+                g_blooddata.heart, g_blooddata.SpO2,
+                ti, td, hi, hd);
+        }
     }
     vTaskDelay(1000);  
     }
@@ -721,7 +745,7 @@ void Start_MyTaskList(void *arg)  //任务启动任务
        5 = 重 Work(长非阻塞段/时序敏感采样):DHT11 位操作忙等、MAX30102 FIFO+FFT
        4 = 其余 Work(时间读取、ADXL 50ms 采样) 与 交互任务(Menu/Key/beep/Usart_Rx)
        3 = Show 显示任务(只画屏,最低) */
-    Create_Task(Time_Work_f,     "Time_Work_f",      96, 4, &Time_Work_fHandler);  //96字:实测峰值38w
+    Create_Task(Time_Work_f,     "Time_Work_f",     192, 4, &Time_Work_fHandler);  //192字:原峰值38w,新增每秒综合遥测后含 vsnprintf(%f) 的栈开销,留足余量
     Create_Task(Time_Show_f,     "Time_Show_f",    128, 3, &Time_Show_fHandler);  //128字:内含 SetTime_w()(多路打印),实测峰值52w,按"+48余量"取128
     Create_Task(Adxl345_Work_f,  "Adxl345_Work_f",   128, 4, &Adxl345_Work_fHandler);  //96字:实测峰值38w
     Create_Task(Adxl345_Show_f,  "Adxl345_Show_f",   96, 3, &Adxl345_Show_fHandler);  //96字:实测峰值36w

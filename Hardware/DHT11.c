@@ -11,6 +11,10 @@
 /* DHT11 数据队列:由 DHT11_SCAN 覆盖写入,显示任务只保留最新值 */
 extern QueueHandle_t DHT11Handler;
 
+/* 串口综合显示用的最新温湿度快照(与队列并行,不影响显示任务取数) */
+volatile DHT11_Data_TypeDef g_dht11_latest;
+volatile uint8_t g_dht11_valid = 0;
+
 /* DHT11 数据线:PA7 */
 #define DHT11_DATA_PIN       GPIO_Pin_7
 #define DHT11_DATA_GPIO_PORT GPIOA
@@ -164,9 +168,8 @@ void DHT11_SCAN(void)
     
 	if(Read_DHT11(&DHT11_Data)==SUCCESS)
 		{
-			UsartPrintf(USART1,"\r\nDHT11 read OK\r\nHumidity: %d.%d %%RH  Temperature: %d.%d C\r\n",
-											DHT11_Data.humi_int, DHT11_Data.humi_deci,
-											DHT11_Data.temp_int, DHT11_Data.temp_deci);
+            g_dht11_latest = DHT11_Data;    //供串口综合显示读取
+            g_dht11_valid  = 1;
             xQueueOverwrite(DHT11Handler,&DHT11_Data);
 
          }
