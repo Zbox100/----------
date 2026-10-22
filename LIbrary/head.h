@@ -14,7 +14,7 @@
 #include "queue.h"
 #include "event_groups.h"
 
-extern int global_var;
+/* 时间修改状态机已迁到 MyRTC.h(带名字的枚举),此处不再声明裸 int */
 
 /* 页面/退出事件组(B2):退出消息从"全局标志 g_exit_req"改为位广播,
    并顺带用页面位取代 Menu 与 Show 之间的 vTaskResume/vTaskSuspend 切换。

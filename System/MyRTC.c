@@ -1,5 +1,6 @@
 #include "stm32f10x.h"                  // Device header
 #include <time.h>
+#include "MyRTC.h"                      // 时间修改状态机枚举与接口
 #include "usart.h"
 #include "head.h"
 #include "Oled.h"
@@ -13,6 +14,14 @@
 extern QueueHandle_t QueueGetHandler;
 
 uint16_t MyRTC_Time[] = {2024, 3, 1, 18, 5, 00};	
+
+/* 时间修改状态机:迁移入口集中在这里,避免 magic number 与漏复位 */
+volatile TimeEditState_t g_time_edit = TIME_EDIT_IDLE;
+
+void TimeEdit_Begin(void)  { g_time_edit = TIME_EDIT_ACTIVE; }
+void TimeEdit_Commit(void) { g_time_edit = TIME_EDIT_COMMIT; }
+void TimeEdit_End(void)    { g_time_edit = TIME_EDIT_IDLE; }
+
 void MyRTC_Init(void);
 void MyRTC_SetTime(void);				//函数声明
 void MyRTC_ReadTime(void);
@@ -60,13 +69,13 @@ void SetTime_w()
     uint8_t rx_byte = 0;   // 从队列取出的原始字节
     uint16_t data = 0;     // BCD 转码用,局部变量(原全局 data 已删除)
 
-    /* 编辑期间的独占权由 global_var==2 保证:Time_Work_f 只在 global_var==0 时回读数组,
+    /* 编辑期间的独占权由 g_time_edit==TIME_EDIT_ACTIVE 保证:Time_Work_f 只在 IDLE 时回读数组,
        所以这里逐字段写入不会与读取任务并发;互斥量保护的是"整组覆盖+发布队列"与"整组快照" */
 
     while(1)
     {   
         // 检查是否完成时间设置
-        if(global_var == 9)
+        if(g_time_edit == TIME_EDIT_COMMIT)
         {
 						OLED_ShowString(4,5,"Exiting...");
 						UsartPrintf(USART_DEBUG,"  The modification was successful!\r\n");
@@ -88,7 +97,7 @@ void SetTime_w()
 				}
 				if(wait == 0)                //超时未收到数据:放弃本次时间设置并清标志,避免整机死等
 				{
-				    global_var = 0;
+				    TimeEdit_End();
 				    return;
 				}
 				data = rx_byte;              //把队列取到的字节交给下面的 BCD 转码
@@ -131,7 +140,7 @@ void SetTime_w()
             case 7:
                 MyRTC_Time[5] = (data/16*10+data%16);
 								UsartPrintf(USART_DEBUG,"  What you entered is:%d \r\n",MyRTC_Time[5]);
-                global_var = 9; // 设置退出标志
+                TimeEdit_Commit(); // 收齐 8 字节:进入提交态
                 break;
             default:
                 // 不应该到达这里
@@ -147,7 +156,7 @@ void SetTime_w()
     }
     MyRTC_SetTime(); // 设置RTC时间
 		MyRTC_ReadTime();// 立刻把新时间回读进数组并刷新显示队列,不必等 Time_Work_f 下一拍
-		global_var = 0;  // 修改流程结束,清回普通显示态,避免 9 残留到下一轮
+		TimeEdit_End();  // 修改流程结束,清回普通显示态,避免残留提交态
 		
     return;
 }

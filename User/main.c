@@ -16,7 +16,7 @@
 #include "blood.h"                    // 血氧心率（生理参数）数据结构与处理模块头文件
 
 //全局变量
-int global_var = 0;
+/* 时间修改三态 g_time_edit 定义在 MyRTC.c,此处只通过 MyRTC.h 的 extern 使用 */
 
 // FreeRTOS核心头文件：提供FreeRTOS基础类型、宏定义与调度器核心支撑接口
 #include "FreeRTOS.h"
@@ -223,7 +223,7 @@ void Adxl345_Show_f( void * arg )
             if(bits & EVT_PAGE_STEP)            //后台页面只确认收到;前台页面才真正退页
             {
                 xEventGroupClearBits(PageEventGroup, EVT_PAGE_STEP | EVT_EXIT);  //先让出前台身份
-                global_var = 0;
+                TimeEdit_End();
                 GPIO_ResetBits(GPIOB, GPIO_Pin_12);
                 GPIO_SetBits(GPIOB, GPIO_Pin_1);
                 OLED_Clear();
@@ -276,10 +276,10 @@ void Time_Work_f( void * arg ) //时间读取任务
        整组写回当前 RTC 值,而 SetTime_w 正是逐字节往这个数组里填新时间。
        原实现靠 vTaskSuspendAll 屏蔽覆盖,改用 vTaskDelay 让出 CPU 后必须显式跳过,
        否则每 1s 都会把刚输入的字段冲掉,修改结果必然是错的。
-       注意判据必须是 ==0 而不是 !=2:收完最后一个字节后 global_var 已置 9,
+       注意判据必须是 TIME_EDIT_IDLE 而不是 != TIME_EDIT_ACTIVE:收完最后一个字节后状态已是 TIME_EDIT_COMMIT,
        而 SetTime_w 之后还有两段 500ms 的 vTaskDelay,合计正好 1s,
        足以让本任务插进来把整组字段刷回旧值,再交给 MyRTC_SetTime 写回 RTC */
-    if(global_var == 0)
+    if(g_time_edit == TIME_EDIT_IDLE)
     {
         MyRTC_ReadTime();
 
@@ -327,7 +327,7 @@ void Time_Show_f( void*arg ) //时间显示任务任务
             if(bits & EVT_PAGE_TIME)
             {
                 xEventGroupClearBits(PageEventGroup, EVT_PAGE_TIME | EVT_EXIT);
-                global_var = 0;
+                TimeEdit_End();
                 OLED_Clear();
                 frame_drawn = 0;
                 Page_LeaveCommon();
@@ -345,7 +345,7 @@ void Time_Show_f( void*arg ) //时间显示任务任务
         }
         active = 1;
 
-        if(global_var==2)
+        if(g_time_edit == TIME_EDIT_ACTIVE)
         {
         SetTime_w();
         frame_drawn = 0;    //SetTime_w 会往第4行写 "Exiting..." 再涂成空格,静态帧已脏,下一轮重画
@@ -416,7 +416,7 @@ void DHT11_Show_f(void*arg)
             if(bits & EVT_PAGE_DHT)
             {
                 xEventGroupClearBits(PageEventGroup, EVT_PAGE_DHT | EVT_EXIT);
-                global_var = 0;
+                TimeEdit_End();
                 OLED_Clear();
                 frame_drawn = 0;        //离屏清场:静态帧随之失效,下次进页面重画
                 Page_LeaveCommon();
@@ -507,7 +507,7 @@ void Max30102_Show_f(void*arg)
             if(bits & EVT_PAGE_MAX)
             {
                 xEventGroupClearBits(PageEventGroup, EVT_PAGE_MAX | EVT_EXIT);
-                global_var = 0;
+                TimeEdit_End();
                 OLED_Clear();
                 frame_drawn = 0;    //离屏清场:静态帧随之失效,下次进页面重画
                 Page_LeaveCommon();
@@ -566,7 +566,7 @@ void Usart_Rx_f(void *arg)
                 xEventGroupSetBits(PageEventGroup, EVT_EXIT);
             }
         }
-        else if(global_var == 2)                //时间设置进行中:字节原样转给 SetTime_w,不做菜单解码
+        else if(g_time_edit == TIME_EDIT_ACTIVE)                //时间设置进行中:字节原样转给 SetTime_w,不做菜单解码
         {
             xQueueSend(UsartTimeHandler,&ch,0);
         }
@@ -578,7 +578,7 @@ void Usart_Rx_f(void *arg)
             {
                 /* 这条指令本身也要排进时间队列:SetTime_w 的 case 0 会消费它并立刻打印输入提示 */
                 xQueueSend(UsartTimeHandler,&ch,0);
-                global_var = 2;
+                TimeEdit_Begin();
             }
         }
         else if((ch >= 1) && (ch <= 4))          //菜单功能选择
