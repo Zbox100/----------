@@ -2,6 +2,7 @@
 
 > 适用工程：STM32F103C8 + FreeRTOS（协作式调度，`configUSE_PREEMPTION=0`）
 > 文档日期：2026-10-22
+> 修订：2026-10-22 验收后拆除全部临时诊断（`Page_ExitSeen`、`dbg_exit_seen[]`、`exit_counted`、RX/寄存器打印），并补充“页面态丢弃 1~4 + 离页清空菜单队列”的防自动跳页处理。
 > 相关文件：`LIbrary/head.h`、`User/main.c`、`User/stm32f10x_it.c`、`System/MyRTC.c`
 
 ## 1. 摘要
@@ -34,7 +35,7 @@
 ### 2.3 目标与验收
 
 - 交付：退出消息从“单消费标志”改为**事件组位广播**；
-- 验收①：任意页面按退出，4 个 Show 任务都观察到该位（用一次性计数验证）；
+- 验收①：任意页面按退出，前台页正确退页；改造期间用一次性计数确认过 4 个任务都观察到该位（计数为临时诊断，验收后已拆除）；
 - 验收②：退出后位被清除，连按两次不重复触发；
 - 验收③：每个页面（时间/计步/温湿度/血氧）都能正常进入与退出。
 
@@ -94,7 +95,7 @@ extern EventGroupHandle_t PageEventGroup;
 | 事件位 | `EVT_EXIT` | “请求退出”（电平，处理完必须清） | `Usart_Rx_f` | 前台页面任务 |
 | 状态位 | `EVT_PAGE_*` | “谁在前台”（同一时刻最多一个） | `Menu_handling_f` | 前台页面任务（退页时） |
 
-区分原因：事件组**不计数**，同一个位重复置 1 只等于“仍然亮着”。因此事件位必须配合 `exit_counted` 局部标志，保证一次退出只处理一次。
+区分原因：事件组**不计数**，同一个位重复置 1 只等于“仍然亮着”。因此退出位必须由处理它的前台页面在退页时清除；连按第二次时会因为页面位已被清而被 `Usart_Rx_f` 直接忽略。
 
 ### 4.3 参与者与读写权限
 
@@ -111,7 +112,7 @@ extern EventGroupHandle_t PageEventGroup;
 
 - 4 个 Show 任务**常驻**、同优先级 4、后台时阻塞在 `portMAX_DELAY`；
 - `Menu_handling_f` 是唯一“导演”，进入页面后挂起自己与 `Key_GetNum_f`；
-- 页面退出时由前台页恢复 Menu 与 Key；
+- 页面退出时由前台页调用 `Page_LeaveCommon()`：清空菜单残留指令，再恢复 Menu 与 Key；
 - `beep_Work_f` 仍在启动时挂起（与本次改造无关）。
 
 ## 5. 公共函数
@@ -143,12 +144,19 @@ static void Page_Enter(EventBits_t page_bit, TaskHandle_t page_task)
 ```
 
 ```c
-static void Page_ExitSeen(uint8_t idx)   /* 临时验收计数，验收后可删 */
+static void Page_LeaveCommon(void)
 {
-    dbg_exit_seen[idx]++;
-    UsartPrintf(USART1, "[EXIT] task%u count=%u\r\n", idx, (unsigned)dbg_exit_seen[idx]);
+    uint8_t dummy;
+
+    /* 页面期间 Menu 处于挂起,积压的 1~4 会在回菜单后被当成新指令 → 自动跳页 */
+    while(xQueueReceive(UsartMenuHandler, &dummy, 0) == pdTRUE) { }
+
+    vTaskResume(Menu_handling_fHandler);
+    vTaskResume(Key_GetNum_fHandler);
 }
 ```
+
+> 改造期间曾用 `Page_ExitSeen()` + `dbg_exit_seen[]` 做“4 个任务都收到”的一次性计数，验收完成后已按计划删除。
 
 ## 6. 页面任务的统一模板
 
@@ -159,20 +167,15 @@ while(1)
 {
     EventBits_t bits = Page_Wait(EVT_PAGE_STEP, active, pdMS_TO_TICKS(50));
 
-    if(!(xEventGroupGetBits(PageEventGroup) & EVT_EXIT)) exit_counted = 0;
-
     if(bits & EVT_EXIT)
     {
-        if(!exit_counted) { exit_counted = 1; Page_ExitSeen(1); }
-
         if(bits & EVT_PAGE_STEP)          /* 只有前台页面执行退页 */
         {
             xEventGroupClearBits(PageEventGroup, EVT_PAGE_STEP | EVT_EXIT);
             global_var = 0;
             OLED_Clear();
             frame_drawn = 0;
-            vTaskResume(Menu_handling_fHandler);
-            vTaskResume(Key_GetNum_fHandler);
+            Page_LeaveCommon();
             vTaskSuspend(beep_Work_fHandler);   /* 仅计步页需要 */
             active = 0;
             continue;
@@ -223,8 +226,8 @@ Menu 收到选择
   └─ EXTI9_5_IRQHandler：清挂起位 → xQueueSendFromISR(UsartRxHandler, 0x00)
         └─ Usart_Rx_f：取到 0x00
               └─ 若 (GetBits & EVT_PAGE_ALL) != 0 → SetBits(EVT_EXIT)
-                    ├─ 前台页：计数 → 清 页面位|EVT_EXIT → 清屏 → 恢复 Menu/Key → active=0
-                    ├─ 后台页：计数 → vTaskDelay(1) → 继续睡
+                    ├─ 前台页：清 页面位|EVT_EXIT → 清屏 → Page_LeaveCommon() → active=0
+                    ├─ 后台页：vTaskDelay(1) → 继续睡（只被唤醒，不做退页）
                     └─ Menu：被恢复 → 重画菜单
 ```
 
@@ -246,17 +249,19 @@ if((xEventGroupGetBits(PageEventGroup) & EVT_EXIT) != 0)
 }
 ```
 
-### 7.5 菜单态与重复按键
+### 7.5 菜单态、重复按键与残留指令
 
 - `Usart_Rx_f` 在置位前检查 `EVT_PAGE_ALL`：菜单态直接忽略，避免退出位残留；
-- 第一次退出后页面位已被清，第二次按键时 `EVT_PAGE_ALL == 0`，同样被忽略。
+- 第一次退出后页面位已被清，第二次按键时 `EVT_PAGE_ALL == 0`，同样被忽略；
+- **页面态不再接收 `1~4`**：Menu 已挂起，此时入队只会变成“回菜单后自动跳页”的残留；
+- **离页时清空菜单队列**：`Page_LeaveCommon()` 以 0 超时抽干 `UsartMenuHandler`，再恢复 Menu/Key。
 
 ## 8. 代码改动清单
 
 | 文件 | 改动 |
 |---|---|
 | `LIbrary/head.h` | 新增 `event_groups.h`、5 个位宏、`PageEventGroup` 外部声明；删除 `g_exit_req` 声明 |
-| `User/main.c` | 新增 `PageEventGroup`、`Page_Wait`、`Page_ExitSeen`、`Page_Enter`；4 个 Show 任务改为常驻 + 事件组等待；Menu 8 处入页改调 `Page_Enter`；`Usart_Rx_f` 置退出位；启动时不再挂起 4 个 Show 任务；`main` 创建事件组并判 NULL |
+| `User/main.c` | 新增 `PageEventGroup`、`Page_Wait`、`Page_Enter`、`Page_LeaveCommon`；4 个 Show 任务改为常驻 + 事件组等待；Menu 8 处入页改调 `Page_Enter`；`Usart_Rx_f` 置退出位、页面态忽略 `1~4`；离页清空菜单队列；启动时不再挂起 4 个 Show 任务；`main` 创建事件组并判 NULL |
 | `User/stm32f10x_it.c` | EXTI 中断只投 `0x00` 进队列，删除 OLED 操作与 `g_exit_req` |
 | `System/MyRTC.c` | `SetTime_w` 的退出判据由 `g_exit_req` 改为 `EVT_EXIT` 位 |
 | `FreeRTOS/FreeRTOSConfig.h` | 本步**无需改动**（此版本事件组随 `event_groups.c` 一起编译，没有独立开关） |
@@ -278,7 +283,7 @@ if((xEventGroupGetBits(PageEventGroup) & EVT_EXIT) != 0)
    `Page_Enter` 先清 `EVT_PAGE_ALL | EVT_EXIT`，菜单态残留不会感染下一次进页面。
 
 5. **事件组不计数**
-   连按两次退出只会留下“仍然亮着”的一个事件；`exit_counted` 防止同一事件被同一任务重复计数。
+   连按两次退出只会留下“仍然亮着”的一个事件；第二次按下时页面位已清，`Usart_Rx_f` 直接忽略，不会重复退页。改造期的 `exit_counted` 计数只是验收手段，现已删除。
 
 6. **后台页的 1 tick 让出**
    退出位尚未被前台清掉时，后台任务重新等待会立即返回；`vTaskDelay(1)` 避免忙循环并给前台让出 CPU。
@@ -288,6 +293,9 @@ if((xEventGroupGetBits(PageEventGroup) & EVT_EXIT) != 0)
 
 8. **`5` 只在时间页前台生效**
    `Usart_Rx_f` 检查 `EVT_PAGE_TIME`；菜单态按 `5` 不再留下“下次进页面突然进入修改态”的残留。
+
+9. **页面态丢弃 `1~4` + 离页清空菜单队列**
+   这两条共同消除“按 0 退出却自动跳回某页”：页面期间 Menu 挂起，任何入队的菜单指令都会在回菜单后被当成新输入；现在页面态不入队，离页时再抽干一次队列兜底。
 
 ## 10. 验收与观测
 
@@ -299,30 +307,33 @@ if((xEventGroupGetBits(PageEventGroup) & EVT_EXIT) != 0)
 
 | 测试 | 预期 |
 |---|---|
-| 任意页面按退出 | 串口打印 4 行 `[EXIT] task0~3 count=n`；页面回到菜单 |
+| 任意页面按退出 | 页面回到菜单（广播计数为临时诊断，已拆除） |
 | 连按两次退出 | 只回菜单一次；第二次被忽略 |
 | 四页分别进出 | 每页显示与退出正常，无互相干扰 |
 | 时间页按 `0x05` | 第 3 行出现 `Edit:Year low`；8 字节走完后时间更新 |
 | 时间修改中按退出 | 立即回菜单，不卡在编辑态 |
+| 页面内发 `1~4` 再按 0 退出 | 页面内无反应；回菜单后**不再自动跳回某页** |
 | 菜单态按退出 | 无动作（不再出现残留标志） |
 
 ## 11. 资源开销
 
 - 事件组对象约 40~50B 堆；
 - 无新增任务、无新增任务栈；
-- 每个 Show 任务新增 `EventBits_t bits`、`active`、`exit_counted` 等少量局部变量；
+- 每个 Show 任务新增 `EventBits_t bits`、`active` 等少量局部变量；
 - `configUSE_TIMERS` 保持 0，未引入定时器守护任务的约 1.3KB 开销。
 
 ## 12. 已知限制与后续
 
-1. **后台页等待退出位目前只服务于验收**
-   后台页面没有业务需要响应退出；`Page_ExitSeen` 与 `dbg_exit_seen[]` 是临时诊断。验收完成后可简化为：
+1. **后台页仍在等退出位（但不做退页）**
+   后台页面没有业务需要响应退出；保留它等 `EVT_EXIT` 是为了维持“一次置位唤醒全部等待者”的广播语义。收到后只 `vTaskDelay(1)` 让出，不做任何退页动作。若后续确认没有任务需要在后台观察退出，可进一步简化为：
 
    ```c
    EventBits_t mask = active ? EVT_EXIT : page_bit;
    ```
 
-   并删除后台分支中的计数与 `vTaskDelay(1)`。
+   这样只有前台页会被退出位唤醒，后台只等自己的页面位。
+
+   改造期用于验证广播的 `Page_ExitSeen()` / `dbg_exit_seen[]` 已删除。
 
 2. **抢占（B1）尚未开启**
    本实现按协作式调度验证。开启抢占后需要复核 `global_var` 等跨任务共享变量的保护。
@@ -334,7 +345,7 @@ if((xEventGroupGetBits(PageEventGroup) & EVT_EXIT) != 0)
 
 1. 恢复 4 个 Show 任务为“启动时挂起 + Menu `vTaskResume` + 退出 `vTaskSuspend`”；
 2. 恢复 `g_exit_req` 的声明、ISR 置位与页面轮询；
-3. 删除 `PageEventGroup`、位宏与三个公共函数；
+3. 删除 `PageEventGroup`、位宏与三个公共函数（`Page_Wait` / `Page_Enter` / `Page_LeaveCommon`）；
 4. 恢复 `SetTime_w` 的 `g_exit_req` 判据；
 5. 用 `git revert` 或回到改造前的提交即可整体回退。
 

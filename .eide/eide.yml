@@ -31,8 +31,10 @@ virtualFolder:
         - path: Hardware/blood.h
         - path: Hardware/usart.c
         - path: Hardware/usart.h
-        - path: Hardware/xiic.c
-        - path: Hardware/xiic.h
+        - path: Hardware/i2c_ll.c
+        - path: Hardware/i2c_ll.h
+        - path: Hardware/i2c_bus.c
+        - path: Hardware/i2c_bus.h
         - path: Hardware/DHT11.c
         - path: Hardware/DHT11.h
         - path: Hardware/adxl345.c

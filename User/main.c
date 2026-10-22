@@ -12,7 +12,7 @@
 #include "DHT11.h"                    // DHT11温湿度传感器驱动模块头文件
 #include "max30102.h"                 // MAX30102心率血氧光电传感器驱动模块头文件
 #include "algorithm.h"                // 传感器数据处理算法（如心率、血氧计算）模块头文件
-#include "xiic.h"                     // 自定义软件I2C通信模块头文件
+#include "i2c_bus.h"                  // 统一软件I2C协议层（7位地址/寄存器/错误码）
 #include "blood.h"                    // 血氧心率（生理参数）数据结构与处理模块头文件
 
 //全局变量
@@ -29,8 +29,6 @@ int global_var = 0;
    位由 Usart_Rx_f 在任务上下文置位,4 个 Show 任务都能观察到,不再有"谁清谁得"的单消费问题 */
 uint8_t IN = 0;
 extern BloodData g_blooddata;
-/* ---- 临时验收计数:每个 Show 任务观察到一次 EVT_EXIT 就 +1,查清后删除 ---- */
-volatile uint8_t dbg_exit_seen[4] = {0};   /* [0]=Time [1]=Step [2]=DHT [3]=Max */
 /////////////////////专用功能任务//////////////////////////////
 TaskHandle_t Time_Work_fHandler;
 TaskHandle_t Time_Show_fHandler;
@@ -80,13 +78,6 @@ static EventBits_t Page_Wait(EventBits_t page_bit, uint8_t active, TickType_t ac
                                active ? active_timeout : portMAX_DELAY);
 }
 
-/* 临时验收计数:每个 Show 任务观察到一次退出位就 +1,并把计数打印出来 */
-static void Page_ExitSeen(uint8_t idx)
-{
-    dbg_exit_seen[idx]++;
-    UsartPrintf(USART1, "[EXIT] task%u count=%u\r\n", idx, (unsigned)dbg_exit_seen[idx]);
-}
-
 /* Menu 进入页面:先清掉上一轮遗留的退出位与页面位,再置本页位。
    之后不再 vTaskResume —— 页面任务常驻、阻塞在事件组上 */
 static void Page_Enter(EventBits_t page_bit, TaskHandle_t page_task)
@@ -104,12 +95,19 @@ static void Page_Enter(EventBits_t page_bit, TaskHandle_t page_task)
     vTaskSuspend(NULL);
 }
 
-/* ---- 临时诊断:计步页第3行读数,查清后删除 ----
-   由 Adxl345_Work_f 写入、Adxl345_Show_f 读出(协作式调度下二者不会同时运行) */
-volatile float dbg_mag     = 0.0f;   //当前三轴合加速度(mg),静止约1000,恒为~6 说明器件没在出数
-volatile float dbg_dev_min = 0.0f;   //最近约1s 窗口内 dev 的最小值:若它压不到 -50,重新武装就不会发生
-volatile uint16_t dbg_gap  = 0;      //最近约1s 窗口内采样任务"唤醒间隔"的最大值(ms),正常应约50;远大于50 说明被别的任务饿死
-volatile uint16_t dbg_show_gap = 0;  //最近约1s 窗口内"显示任务"自身循环间隔的最大值(ms);远大于~50 说明显示任务被饿死
+/* 页面退出时统一收尾:清掉"页面期间"积压在菜单队列里的 1~4,再恢复菜单与按键。
+   否则回到菜单的第一轮会把残留指令当成新输入,出现"按 0 退出却自动跳回某页" */
+static void Page_LeaveCommon(void)
+{
+    uint8_t dummy;
+
+    while(xQueueReceive(UsartMenuHandler, &dummy, 0) == pdTRUE)
+    {
+        /* 丢弃页面期间残留的菜单指令 */
+    }
+    vTaskResume(Menu_handling_fHandler);
+    vTaskResume(Key_GetNum_fHandler);
+}
 
 void Adxl345_Work_f(void*arg)
 {	
@@ -124,8 +122,6 @@ void Adxl345_Work_f(void*arg)
         const float STEP_TH = 100.0f;                  //抬升阈值(mg):静止约1000,走路摆动约±100~200,故取100
         const float ARM_TH  = 50.0f;                   //回落阈值(mg):负向,取50使每步都能重新武装
         const uint16_t STEP_REFRACTORY_MS = 300;       //两次计步最小间隔(ms)
-        float dev_min = 1000.0f;                       //临时诊断:本窗口内 dev 最小值
-        uint16_t win_cnt = 0;                          //临时诊断:窗口帧计数(20×50ms=1s)
         TickType_t lastStepTick = 0;                   //上一次计步的时刻(tick)
         TickType_t xLastWakeTime = xTaskGetTickCount(); //记录首次唤醒时刻,建立绝对时间基准网格
         const TickType_t xPeriod = pdMS_TO_TICKS(50);   //50ms 精确采样周期
@@ -137,25 +133,6 @@ void Adxl345_Work_f(void*arg)
 	{
         // TickType_t t_now;
         vTaskDelayUntil(&xLastWakeTime, xPeriod);       //按绝对时间网格唤醒,补偿执行耗时,保证 50ms 等间隔
-
-        /* ---- 临时诊断:测本任务实际唤醒间隔,判断是否被其它任务饿死 ---- */
-        {
-            static TickType_t last_wake = 0;
-            static uint32_t   gap_max   = 0;
-            static uint16_t   gap_n     = 0;
-            TickType_t now_t = xTaskGetTickCount();
-            if(last_wake != 0)
-            {
-                uint32_t g = (uint32_t)(now_t - last_wake);
-                if(g > gap_max) gap_max = g;
-            }
-            last_wake = now_t;
-            if(++gap_n >= 20)                 //每1s发布一次"窗口内最大唤醒间隔"
-            {
-                dbg_gap = (gap_max > 999) ? 999 : (uint16_t)gap_max;
-                gap_n = 0; gap_max = 0;
-            }
-        }
 
         /*周期实测(已验证,故停用):记录相邻两次唤醒的tick差,累加100次再打印一次。
           每轮都打印会显著拉长被测周期,所以必须攒批输出。
@@ -188,11 +165,6 @@ void Adxl345_Work_f(void*arg)
         /* 慢速基线:一阶低通,τ≈5s,只跟随重力/姿态的缓慢变化,不被步态振荡带走 */
         base += (mag - base) * 0.01f;
         dev = mag - base;                                      //相对基线的偏差(带符号)
-
-        /* ---- 临时诊断:刷新"最近约1s窗口内 dev 的最小值" ---- */
-        dbg_mag = mag;
-        if(win_cnt == 0 || dev < dev_min) dev_min = dev;
-        if(++win_cnt >= 20) { dbg_dev_min = dev_min; win_cnt = 0; dev_min = 1000.0f; }
 
         /* 计步:施密特状态机,判据用"相对基线的偏差 dev",而不是 |Δmag|。
            原因:|Δmag| 在一次落脚内有多个峰(落地/回弹/摆臂),它们的间距与相邻
@@ -238,19 +210,14 @@ void Adxl345_Show_f( void * arg )
 {
     uint32_t dis_buf_R;
     uint32_t last_shown = 0xFFFFFFFF;   //上次已显示值(取不可能的值,保证首次必刷)
-    uint16_t shown_gap  = 0xFFFF;       //临时诊断:已显示的显示任务循环间隔峰值
     uint8_t  frame_drawn = 0;   //静态帧(边框/标签)是否已画:进页面清一次屏后置1,退出时置0
     uint8_t  active = 0;        //本页是否在前台(由页面位决定)
-    uint8_t  exit_counted = 0;  //本轮退出位是否已计数,避免同一事件重复累加
     while(1)
     {
         EventBits_t bits = Page_Wait(EVT_PAGE_STEP, active, pdMS_TO_TICKS(50));
 
-        if(!(xEventGroupGetBits(PageEventGroup) & EVT_EXIT)) exit_counted = 0;
-
         if(bits & EVT_EXIT)
         {
-            if(!exit_counted) { exit_counted = 1; Page_ExitSeen(1); }
             if(bits & EVT_PAGE_STEP)            //后台页面只确认收到;前台页面才真正退页
             {
                 xEventGroupClearBits(PageEventGroup, EVT_PAGE_STEP | EVT_EXIT);  //先让出前台身份
@@ -259,8 +226,7 @@ void Adxl345_Show_f( void * arg )
                 GPIO_SetBits(GPIOB, GPIO_Pin_1);
                 OLED_Clear();
                 frame_drawn = 0;        //离屏清场:静态帧随之失效,下次进页面重画
-                vTaskResume(Menu_handling_fHandler);
-                vTaskResume(Key_GetNum_fHandler);
+                Page_LeaveCommon();
                 vTaskSuspend(beep_Work_fHandler);
                 active = 0;
                 continue;
@@ -275,24 +241,6 @@ void Adxl345_Show_f( void * arg )
             continue;
         }
         active = 1;
-        /* ---- 临时诊断:测"显示任务"自身循环间隔,判断是否被别的任务饿死 ---- */
-        {
-            static TickType_t last_sh = 0;
-            static uint32_t   sg_max  = 0;
-            static uint16_t   sg_n    = 0;
-            TickType_t now_s = xTaskGetTickCount();
-            if(last_sh != 0)
-            {
-                uint32_t g = (uint32_t)(now_s - last_sh);
-                if(g > sg_max) sg_max = g;
-            }
-            last_sh = now_s;
-            if(++sg_n >= 20)                 //每20圈(约1s)发布一次"窗口内最大循环间隔"
-            {
-                dbg_show_gap = (sg_max > 999) ? 999 : (uint16_t)sg_max;
-                sg_n = 0; sg_max = 0;
-            }
-        }
         /* 局部刷新:整屏清除 + 静态边框/标签只在进页面时做一次,
            循环内只重写变化的数字(OLED_ShowNum 定宽整格覆盖,天然盖掉旧值),
            不再每轮 OLED_Clear —— 那是本页 100ms 整屏闪烁的根源 */
@@ -304,23 +252,7 @@ void Adxl345_Show_f( void * arg )
             OLED_ShowString(4, 1, "***************");
             frame_drawn = 1;
             last_shown = 0xFFFFFFFF;    //重画静态帧后强制刷新一次数字
-            shown_gap  = 0xFFFF;        //临时诊断:静态帧把第1行星号重画了,强制S行再画一次
         }
-        /* ---- 临时诊断(第1行):显示任务自身循环间隔峰值,查清后删除 ---- */
-        if(dbg_show_gap != shown_gap)
-        {
-            shown_gap = dbg_show_gap;
-            OLED_ShowString(1, 1, "S");
-            OLED_ShowNum(1, 2, dbg_show_gap, 4);
-            OLED_ShowString(1, 6, "          ");   //清掉右侧残留的星号边框
-        }
-        /* ---- 临时诊断:第3行 M<mag> D<最近1s dev 最小值> G<唤醒间隔峰值>,查清后删除 ---- */
-        OLED_ShowString(3, 1, "M");
-        OLED_ShowNum(3, 2, (uint32_t)dbg_mag, 4);
-        OLED_ShowString(3, 7, "D");
-        OLED_ShowSignedNum(3, 8, (int32_t)dbg_dev_min, 4);
-        OLED_ShowString(3, 13, "G");
-        OLED_ShowNum(3, 14, dbg_gap, 3);
         /* 只保留最新值:等待节拍由 Page_Wait 的 50ms 承担,这里非阻塞取一份快照,
            且仅在数值变化时重画,消掉固定延时叠加的显示滞后 */
         if(xQueueReceive(ADX1345Handler,&dis_buf_R,0) == pdTRUE)
@@ -336,7 +268,6 @@ void Adxl345_Show_f( void * arg )
      
 void Time_Work_f( void * arg ) //时间读取任务
 {
-
     while(1)
     {
     /* 时间修改期间禁止刷新全局数组:MyRTC_ReadTime 会把 MyRTC_Time[]
@@ -361,26 +292,21 @@ void Time_Show_f( void*arg ) //时间显示任务任务
     uint16_t last_time[6] = {0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF};
     uint8_t  frame_drawn = 0;   //静态帧是否已画:退出或 SetTime_w 改写屏幕后置0重画
     uint8_t  active = 0;        //本页是否在前台
-    uint8_t  exit_counted = 0;  //本轮退出位是否已计数
     uint8_t  i;
 
     while(1)
     {
         EventBits_t bits = Page_Wait(EVT_PAGE_TIME, active, pdMS_TO_TICKS(100));
 
-        if(!(xEventGroupGetBits(PageEventGroup) & EVT_EXIT)) exit_counted = 0;
-
         if(bits & EVT_EXIT)     //退出位对 4 个页面任务广播;只有前台页面执行退页
         {
-            if(!exit_counted) { exit_counted = 1; Page_ExitSeen(0); }
             if(bits & EVT_PAGE_TIME)
             {
                 xEventGroupClearBits(PageEventGroup, EVT_PAGE_TIME | EVT_EXIT);
                 global_var = 0;
                 OLED_Clear();
                 frame_drawn = 0;
-                vTaskResume(Menu_handling_fHandler);
-                vTaskResume(Key_GetNum_fHandler);
+                Page_LeaveCommon();
                 active = 0;
                 continue;
             }
@@ -456,25 +382,20 @@ void DTH11_Show_f(void*arg)
     DHT11_Data_TypeDef DHT11_Data_R;
     uint8_t frame_drawn = 0;        //静态帧是否已画:退出清屏后置0,下次进页面重画
     uint8_t active = 0;             //本页是否在前台
-    uint8_t exit_counted = 0;       //本轮退出位是否已计数
 
     while(1)
     {   
         EventBits_t bits = Page_Wait(EVT_PAGE_DHT, active, pdMS_TO_TICKS(200));
 
-        if(!(xEventGroupGetBits(PageEventGroup) & EVT_EXIT)) exit_counted = 0;
-
         if(bits & EVT_EXIT)
         {
-            if(!exit_counted) { exit_counted = 1; Page_ExitSeen(2); }
             if(bits & EVT_PAGE_DHT)
             {
                 xEventGroupClearBits(PageEventGroup, EVT_PAGE_DHT | EVT_EXIT);
                 global_var = 0;
                 OLED_Clear();
                 frame_drawn = 0;        //离屏清场:静态帧随之失效,下次进页面重画
-                vTaskResume(Menu_handling_fHandler);
-                vTaskResume(Key_GetNum_fHandler);
+                Page_LeaveCommon();
                 active = 0;
                 continue;
             }
@@ -521,7 +442,7 @@ void Max30102_Work_f(void*arg)
     {   
         /* 在位检测:PART_ID(0xFF)正常应读回0x15。软件I2C读不到器件时会应答失败返回0,
            模块未连接时直接跳过本轮采样,避免进入等待INT引脚/FIFO的循环把调度器挂死 */
-        online = (IIC_Read_Byte(MAX30102_Device_address, REG_PART_ID) == 0x15) ? 1 : 0;
+        online = (Max30102_ReadReg(REG_PART_ID) == 0x15) ? 1 : 0;
         if(online == 0)
         {
             vTaskDelay(500);                         //模块不在位:每500ms复查一次,期间让出CPU
@@ -553,24 +474,19 @@ void Max30102_Show_f(void*arg)
 {
    uint8_t frame_drawn = 0;     //静态帧是否已画:退出清屏后置0,下次进页面重画
    uint8_t active = 0;          //本页是否在前台
-   uint8_t exit_counted = 0;    //本轮退出位是否已计数
    while(1)
    {
         EventBits_t bits = Page_Wait(EVT_PAGE_MAX, active, pdMS_TO_TICKS(200));
 
-        if(!(xEventGroupGetBits(PageEventGroup) & EVT_EXIT)) exit_counted = 0;
-
         if(bits & EVT_EXIT)
         {
-            if(!exit_counted) { exit_counted = 1; Page_ExitSeen(3); }
             if(bits & EVT_PAGE_MAX)
             {
                 xEventGroupClearBits(PageEventGroup, EVT_PAGE_MAX | EVT_EXIT);
                 global_var = 0;
                 OLED_Clear();
                 frame_drawn = 0;    //离屏清场:静态帧随之失效,下次进页面重画
-                vTaskResume(Menu_handling_fHandler);
-                vTaskResume(Key_GetNum_fHandler);
+                Page_LeaveCommon();
                 active = 0;
                 continue;
             }
@@ -643,7 +559,11 @@ void Usart_Rx_f(void *arg)
         }
         else if((ch >= 1) && (ch <= 4))          //菜单功能选择
         {
-            xQueueSend(UsartMenuHandler,&ch,0);
+            /* 只在菜单态接收:页面态 Menu 已挂起,此时入队只会变成"回菜单后自动跳页"的残留 */
+            if((xEventGroupGetBits(PageEventGroup) & EVT_PAGE_ALL) == 0)
+            {
+                xQueueSend(UsartMenuHandler,&ch,0);
+            }
         }
     }
 }
@@ -829,6 +749,7 @@ void Start_MyTaskList(void *arg)  //任务启动任务
     if(beep_Work_fHandler != NULL) vTaskSuspend(beep_Work_fHandler);
 
     taskEXIT_CRITICAL();
+
     vTaskDelete(NULL);
 
 }
@@ -850,9 +771,9 @@ int main(void)
     Key_Init();                                     // 初始化按键
     /* 串口接收队列必须在 Usart1_Init(使能RXNE中断)之前创建:
        否则中断先到、队列还是NULL,ISR里的 xQueueSendFromISR 会踩空指针 */
-    UsartRxHandler   = xQueueCreate(8, sizeof(uint8_t));
-    UsartMenuHandler = xQueueCreate(4, sizeof(uint8_t));
-    UsartTimeHandler = xQueueCreate(8, sizeof(uint8_t));
+    UsartRxHandler   = xQueueCreate(32, sizeof(uint8_t));   //32 深度:防止长 I2C 阻塞期间连续按键/蓝牙字节溢出
+    UsartMenuHandler = xQueueCreate(8,  sizeof(uint8_t));
+    UsartTimeHandler = xQueueCreate(32, sizeof(uint8_t));   //时间修改一次要排 8 字节,留足余量
     if((UsartRxHandler == NULL) || (UsartMenuHandler == NULL) || (UsartTimeHandler == NULL))
     {
         /* 此处 OLED_Init 已执行,必须先把失败显示出来再停机:
@@ -868,7 +789,7 @@ int main(void)
     EXTI8_Config();                                 // 配置外部中断
     Init_ADXL345();
     DHT11_GPIO_Config();
-    IIC_GPIO_INIT();                                // I2C GPIO初始化
+    SoftI2C_Init(&I2C_Bus_MAX);                     // MAX30102 的软件 I2C 总线(PA11/PA12)初始化
     MAX30102_GPIO();                                // MAX30102 GPIO初始化
     Max30102_reset();                               // MAX30102复位
     MAX30102_Config();                              // MAX30102配置

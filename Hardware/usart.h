@@ -5,7 +5,7 @@
 #include "stm32f10x.h"
 #include <stdio.h>
 
-#define USART_DEBUG		USART1		//调试打印所使用的串口组
+#define USART_DEBUG		USART1		//锟斤拷锟皆达拷印锟斤拷使锟矫的达拷锟斤拷锟斤拷
 
 void Usart1_Init(unsigned int baud);
 
