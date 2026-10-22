@@ -174,19 +174,16 @@ void SysTick_Handler(void)
 
 void EXTI9_5_IRQHandler(void)
 {  
+    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+    uint8_t ch = 0;                       /* 0x00 = 退出指令,与串口/蓝牙的退出编码一致 */
 
-    /* exit is a single flag now; no local payload needed */
-    
-    OLED_Clear();   
-    OLED_ShowString(2,5,"Exiting...");
-    
-    g_exit_req = 1;      /* consumed by the active page task */
+    EXTI_ClearITPendingBit(EXTI_Line8);   //先清挂起位,避免处理期间重复进入
 
-    /* 物理退出键与蓝牙 0 统一到同一个退出请求 g_exit_req:
-       时间设置中的 SetTime_w 也只看这个标志,置位后能立刻返回 */
-    
-    EXTI_ClearITPendingBit(EXTI_Line8);
-    
+    /* ISR 不再直接操作 OLED:软 IIC 是位带时序,放在中断里会长时间占用 CPU 且不可调度。
+       这里只把退出字节投进通用接收队列,由 Usart_Rx_f 在任务上下文置 EVT_EXIT 事件位,
+       物理退出键与蓝牙 0x00 由此统一走同一条路径(也便于广播给全部 Show 任务) */
+    xQueueSendFromISR(UsartRxHandler, &ch, &xHigherPriorityTaskWoken);
+    portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 }
 
 

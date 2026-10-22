@@ -25,11 +25,12 @@ int global_var = 0;
 // FreeRTOS队列管理头文件：包含队列创建、数据发送/接收等任务间通信相关接口
 #include "queue.h"
 /////////////////////全局变量//////////////////////////////////
-/* 退出请求:唯一来源。ISR(物理退出键)或 Usart_Rx_f(蓝牙 0)置 1,
-   当前页面任务消费后清零。替代原来的 KeyExit_R 队列 + global_var==1 双路径 */
-volatile uint8_t g_exit_req = 0;
+/* 退出请求已迁移到 PageEventGroup 的 EVT_EXIT 位(B2):
+   位由 Usart_Rx_f 在任务上下文置位,4 个 Show 任务都能观察到,不再有"谁清谁得"的单消费问题 */
 uint8_t IN = 0;
 extern BloodData g_blooddata;
+/* ---- 临时验收计数:每个 Show 任务观察到一次 EVT_EXIT 就 +1,查清后删除 ---- */
+volatile uint8_t dbg_exit_seen[4] = {0};   /* [0]=Time [1]=Step [2]=DHT [3]=Max */
 /////////////////////专用功能任务//////////////////////////////
 TaskHandle_t Time_Work_fHandler;
 TaskHandle_t Time_Show_fHandler;
@@ -58,6 +59,50 @@ QueueHandle_t Max30102Handler  =NULL;
 QueueHandle_t UsartRxHandler   =NULL;   //USART1 ISR -> Usart_Rx_f
 QueueHandle_t UsartMenuHandler =NULL;   //Usart_Rx_f  -> Menu_handling_f
 QueueHandle_t UsartTimeHandler =NULL;   //Usart_Rx_f  -> SetTime_w
+////////////////////事件组实现/////////////////////////////////
+EventGroupHandle_t PageEventGroup = NULL;   //页面位 + 退出位广播(B2)
+
+/* ---------- 页面/退出事件组公共操作 ---------- */
+
+/* Show 任务统一等待入口:前台只等退出位,后台等"自己的页面位或退出位"。
+   ⚠ 前台掩码里不能再带上自己的页面位 —— 它一直是置位状态,WaitBits 的条件立刻满足,
+   会立即返回形成忙循环(协作式调度下等于把整机饿死)。
+   xClearOnExit 必须为 pdFALSE —— 广播语义要求位保留到所有等待者都看到;
+   若在这里清除,先醒的任务会把位清掉,其余 3 个就永远收不到(又退回"4 抢 1") */
+static EventBits_t Page_Wait(EventBits_t page_bit, uint8_t active, TickType_t active_timeout)
+{
+    EventBits_t mask = active ? EVT_EXIT : (page_bit | EVT_EXIT);
+
+    return xEventGroupWaitBits(PageEventGroup,
+                               mask,
+                               pdFALSE,
+                               pdFALSE,
+                               active ? active_timeout : portMAX_DELAY);
+}
+
+/* 临时验收计数:每个 Show 任务观察到一次退出位就 +1,并把计数打印出来 */
+static void Page_ExitSeen(uint8_t idx)
+{
+    dbg_exit_seen[idx]++;
+    UsartPrintf(USART1, "[EXIT] task%u count=%u\r\n", idx, (unsigned)dbg_exit_seen[idx]);
+}
+
+/* Menu 进入页面:先清掉上一轮遗留的退出位与页面位,再置本页位。
+   之后不再 vTaskResume —— 页面任务常驻、阻塞在事件组上 */
+static void Page_Enter(EventBits_t page_bit, TaskHandle_t page_task)
+{
+    if(page_task == NULL)                 //任务创建失败:留在菜单,避免把菜单挂死后无人接手
+    {
+        return;
+    }
+    xEventGroupClearBits(PageEventGroup, EVT_PAGE_ALL | EVT_EXIT);
+    xEventGroupSetBits(PageEventGroup, page_bit);
+    if(Key_GetNum_fHandler != NULL)          //判空:否则 vTaskSuspend(NULL) 会挂起 Menu 自己
+    {
+        vTaskSuspend(Key_GetNum_fHandler);
+    }
+    vTaskSuspend(NULL);
+}
 
 /* ---- 临时诊断:计步页第3行读数,查清后删除 ----
    由 Adxl345_Work_f 写入、Adxl345_Show_f 读出(协作式调度下二者不会同时运行) */
@@ -195,19 +240,41 @@ void Adxl345_Show_f( void * arg )
     uint32_t last_shown = 0xFFFFFFFF;   //上次已显示值(取不可能的值,保证首次必刷)
     uint16_t shown_gap  = 0xFFFF;       //临时诊断:已显示的显示任务循环间隔峰值
     uint8_t  frame_drawn = 0;   //静态帧(边框/标签)是否已画:进页面清一次屏后置1,退出时置0
+    uint8_t  active = 0;        //本页是否在前台(由页面位决定)
+    uint8_t  exit_counted = 0;  //本轮退出位是否已计数,避免同一事件重复累加
     while(1)
     {
-        if(g_exit_req)
+        EventBits_t bits = Page_Wait(EVT_PAGE_STEP, active, pdMS_TO_TICKS(50));
+
+        if(!(xEventGroupGetBits(PageEventGroup) & EVT_EXIT)) exit_counted = 0;
+
+        if(bits & EVT_EXIT)
         {
-            taskENTER_CRITICAL();
-            g_exit_req = 0;global_var = 0;
-            GPIO_ResetBits(GPIOB, GPIO_Pin_12);
-			GPIO_SetBits(GPIOB, GPIO_Pin_1);
-            OLED_Clear();
-            frame_drawn = 0;        //离屏清场:静态帧随之失效,下次进页面重画
-            vTaskResume(Menu_handling_fHandler);vTaskResume(Key_GetNum_fHandler);vTaskSuspend(beep_Work_fHandler);vTaskSuspend(NULL);
-            taskEXIT_CRITICAL();
+            if(!exit_counted) { exit_counted = 1; Page_ExitSeen(1); }
+            if(bits & EVT_PAGE_STEP)            //后台页面只确认收到;前台页面才真正退页
+            {
+                xEventGroupClearBits(PageEventGroup, EVT_PAGE_STEP | EVT_EXIT);  //先让出前台身份
+                global_var = 0;
+                GPIO_ResetBits(GPIOB, GPIO_Pin_12);
+                GPIO_SetBits(GPIOB, GPIO_Pin_1);
+                OLED_Clear();
+                frame_drawn = 0;        //离屏清场:静态帧随之失效,下次进页面重画
+                vTaskResume(Menu_handling_fHandler);
+                vTaskResume(Key_GetNum_fHandler);
+                vTaskSuspend(beep_Work_fHandler);
+                active = 0;
+                continue;
+            }
+            vTaskDelay(1);              //后台页:让出1个tick,避免退出位未清时忙循环
+            continue;
         }
+
+        if(!(bits & EVT_PAGE_STEP))     //既没有退出事件,也没轮到本页
+        {
+            active = 0;
+            continue;
+        }
+        active = 1;
         /* ---- 临时诊断:测"显示任务"自身循环间隔,判断是否被别的任务饿死 ---- */
         {
             static TickType_t last_sh = 0;
@@ -254,9 +321,9 @@ void Adxl345_Show_f( void * arg )
         OLED_ShowSignedNum(3, 8, (int32_t)dbg_dev_min, 4);
         OLED_ShowString(3, 13, "G");
         OLED_ShowNum(3, 14, dbg_gap, 3);
-        /* 只保留最新值:50ms 超时轮询代替"收一次就固定睡100ms",
+        /* 只保留最新值:等待节拍由 Page_Wait 的 50ms 承担,这里非阻塞取一份快照,
            且仅在数值变化时重画,消掉固定延时叠加的显示滞后 */
-        if(xQueueReceive(ADX1345Handler,&dis_buf_R,pdMS_TO_TICKS(50)) == pdTRUE)
+        if(xQueueReceive(ADX1345Handler,&dis_buf_R,0) == pdTRUE)
         {
             if(dis_buf_R != last_shown)
             {
@@ -291,20 +358,54 @@ void Time_Show_f( void*arg ) //时间显示任务任务
 { 
     
     uint16_t MyRTC_R[6];
+    uint16_t last_time[6] = {0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF};
     uint8_t  frame_drawn = 0;   //静态帧是否已画:退出或 SetTime_w 改写屏幕后置0重画
-       
+    uint8_t  active = 0;        //本页是否在前台
+    uint8_t  exit_counted = 0;  //本轮退出位是否已计数
+    uint8_t  i;
+
     while(1)
     {
+        EventBits_t bits = Page_Wait(EVT_PAGE_TIME, active, pdMS_TO_TICKS(100));
+
+        if(!(xEventGroupGetBits(PageEventGroup) & EVT_EXIT)) exit_counted = 0;
+
+        if(bits & EVT_EXIT)     //退出位对 4 个页面任务广播;只有前台页面执行退页
+        {
+            if(!exit_counted) { exit_counted = 1; Page_ExitSeen(0); }
+            if(bits & EVT_PAGE_TIME)
+            {
+                xEventGroupClearBits(PageEventGroup, EVT_PAGE_TIME | EVT_EXIT);
+                global_var = 0;
+                OLED_Clear();
+                frame_drawn = 0;
+                vTaskResume(Menu_handling_fHandler);
+                vTaskResume(Key_GetNum_fHandler);
+                active = 0;
+                continue;
+            }
+            vTaskDelay(1);
+            continue;
+        }
+
+        if(!(bits & EVT_PAGE_TIME))
+        {
+            active = 0;
+            continue;
+        }
+        active = 1;
+
         if(global_var==2)
         {
         SetTime_w();
         frame_drawn = 0;    //SetTime_w 会往第4行写 "Exiting..." 再涂成空格,静态帧已脏,下一轮重画
+        for(i = 0; i < 6; i++) last_time[i] = 0xFFFF;   //强制下一拍把新时间写上屏
+        if((xEventGroupGetBits(PageEventGroup) & EVT_EXIT) != 0)
+        {
+            continue;       //退出位已置:不再重画,直接回顶部走统一退页流程
         }
-        
-        if(g_exit_req)      //ISR(物理退出键)或蓝牙 0 置位;SetTime_w 提前返回后也靠它退出
-        {taskENTER_CRITICAL();
-        g_exit_req = 0;global_var = 0;OLED_Clear();frame_drawn = 0;vTaskResume(Menu_handling_fHandler);vTaskResume(Key_GetNum_fHandler);vTaskSuspend(NULL);
-        taskEXIT_CRITICAL();}
+        }
+
         /* 局部刷新:整屏清除 + 静态标签只在进页面时做一次,循环内只重写 6 个时间数字 */
         if(!frame_drawn)
         {
@@ -314,20 +415,25 @@ void Time_Show_f( void*arg ) //时间显示任务任务
             OLED_ShowString(3, 1, "Key 5 to amend  ");
             OLED_ShowString(4, 1, "***************");
             frame_drawn = 1;
+            for(i = 0; i < 6; i++) last_time[i] = 0xFFFF;
         }
-        /* 100ms 超时而非 portMAX_DELAY:时间工作任务每 1s 才送一次新值,
-           死等会让退出请求最长压 1s 才被本任务看到;超时后回顶部检查 g_exit_req */
-        if(xQueueReceive(QueueGetHandler,MyRTC_R,pdMS_TO_TICKS(100)) != pdTRUE)
+        /* 等待节拍已由 Page_Wait 的 100ms 承担:退出请求最长 100ms 内被看到。
+           这里非阻塞取一份快照,只有数值变化才重画(时间任务每秒才更新一次) */
+        if(xQueueReceive(QueueGetHandler,MyRTC_R,0) == pdTRUE)
         {
-            continue;
+            if((MyRTC_R[0] != last_time[0]) || (MyRTC_R[1] != last_time[1]) ||
+               (MyRTC_R[2] != last_time[2]) || (MyRTC_R[3] != last_time[3]) ||
+               (MyRTC_R[4] != last_time[4]) || (MyRTC_R[5] != last_time[5]))
+            {
+                for(i = 0; i < 6; i++) last_time[i] = MyRTC_R[i];
+                OLED_ShowNum(1, 6, MyRTC_R[0], 4);     // 年
+                OLED_ShowNum(1, 11, MyRTC_R[1], 2);    // 月
+                OLED_ShowNum(1, 14, MyRTC_R[2], 2);    // 日
+                OLED_ShowNum(2, 6, MyRTC_R[3], 2);     // 时
+                OLED_ShowNum(2, 9, MyRTC_R[4], 2);     // 分
+                OLED_ShowNum(2, 12, MyRTC_R[5], 2);    // 秒
+            }
         }
-        OLED_ShowNum(1, 6, MyRTC_R[0], 4);     // 年
-        OLED_ShowNum(1, 11, MyRTC_R[1], 2);    // 月
-        OLED_ShowNum(1, 14, MyRTC_R[2], 2);    // 日
-        OLED_ShowNum(2, 6, MyRTC_R[3], 2);     // 时
-        OLED_ShowNum(2, 9, MyRTC_R[4], 2);     // 分
-        OLED_ShowNum(2, 12, MyRTC_R[5], 2);    // 秒                  
-        vTaskDelay(1000);  
     }
                
 }
@@ -349,23 +455,42 @@ void DTH11_Show_f(void*arg)
 {
     DHT11_Data_TypeDef DHT11_Data_R;
     uint8_t frame_drawn = 0;        //静态帧是否已画:退出清屏后置0,下次进页面重画
+    uint8_t active = 0;             //本页是否在前台
+    uint8_t exit_counted = 0;       //本轮退出位是否已计数
 
     while(1)
     {   
-        if(g_exit_req)
+        EventBits_t bits = Page_Wait(EVT_PAGE_DHT, active, pdMS_TO_TICKS(200));
+
+        if(!(xEventGroupGetBits(PageEventGroup) & EVT_EXIT)) exit_counted = 0;
+
+        if(bits & EVT_EXIT)
         {
-            taskENTER_CRITICAL();
-            g_exit_req = 0;global_var = 0;          
-            OLED_Clear();
-            frame_drawn = 0;        //离屏清场:静态帧随之失效,下次进页面重画
-            vTaskResume(Menu_handling_fHandler);
-            vTaskResume(Key_GetNum_fHandler);
-            vTaskSuspend(NULL);
-            taskEXIT_CRITICAL();
+            if(!exit_counted) { exit_counted = 1; Page_ExitSeen(2); }
+            if(bits & EVT_PAGE_DHT)
+            {
+                xEventGroupClearBits(PageEventGroup, EVT_PAGE_DHT | EVT_EXIT);
+                global_var = 0;
+                OLED_Clear();
+                frame_drawn = 0;        //离屏清场:静态帧随之失效,下次进页面重画
+                vTaskResume(Menu_handling_fHandler);
+                vTaskResume(Key_GetNum_fHandler);
+                active = 0;
+                continue;
+            }
+            vTaskDelay(1);
+            continue;
         }
+
+        if(!(bits & EVT_PAGE_DHT))
+        {
+            active = 0;
+            continue;
+        }
+        active = 1;
         /* 同 Max30102_Show_f:DHT11_SCAN() 只在读成功时才往队列里送数据,模块未连接时
            队列永远为空,原 portMAX_DELAY 死等会让本任务无法响应退出请求,页面卡在"Exiting..."
-           改为带超时接收,超时后回到循环顶部重新判断退出条件 */
+           改为非阻塞取数,等待节拍由 Page_Wait 的 200ms 承担 */
         /* 局部刷新:静态标签只在进页面时画一次,数据到达时只重写 4 个数字 */
         if(!frame_drawn)
         {
@@ -376,14 +501,13 @@ void DTH11_Show_f(void*arg)
             OLED_ShowString(4, 1, "***************");
             frame_drawn = 1;
         }
-        if(xQueueReceive(DTH11Handler,&DHT11_Data_R,pdMS_TO_TICKS(200)) == pdTRUE)
+        if(xQueueReceive(DTH11Handler,&DHT11_Data_R,0) == pdTRUE)
         {
             OLED_ShowNum(2,9,DHT11_Data_R.humi_int,2);
             OLED_ShowNum(2,12,DHT11_Data_R.humi_deci,2);
             OLED_ShowNum(3,9,DHT11_Data_R.temp_int,2);
             OLED_ShowNum(3,12,DHT11_Data_R.temp_deci,2);
         }
-        vTaskDelay(100);
     }
 
         
@@ -428,24 +552,42 @@ void Max30102_Work_f(void*arg)
 void Max30102_Show_f(void*arg)
 {
    uint8_t frame_drawn = 0;     //静态帧是否已画:退出清屏后置0,下次进页面重画
+   uint8_t active = 0;          //本页是否在前台
+   uint8_t exit_counted = 0;    //本轮退出位是否已计数
    while(1)
    {
-        if(g_exit_req)
+        EventBits_t bits = Page_Wait(EVT_PAGE_MAX, active, pdMS_TO_TICKS(200));
+
+        if(!(xEventGroupGetBits(PageEventGroup) & EVT_EXIT)) exit_counted = 0;
+
+        if(bits & EVT_EXIT)
         {
-            taskENTER_CRITICAL();
-            g_exit_req = 0;global_var = 0;            
-            OLED_Clear();
-            frame_drawn = 0;    //离屏清场:静态帧随之失效,下次进页面重画
-            vTaskResume(Menu_handling_fHandler);
-            vTaskResume(Key_GetNum_fHandler);
-            vTaskSuspend(NULL);
-            taskEXIT_CRITICAL();
-        }  
+            if(!exit_counted) { exit_counted = 1; Page_ExitSeen(3); }
+            if(bits & EVT_PAGE_MAX)
+            {
+                xEventGroupClearBits(PageEventGroup, EVT_PAGE_MAX | EVT_EXIT);
+                global_var = 0;
+                OLED_Clear();
+                frame_drawn = 0;    //离屏清场:静态帧随之失效,下次进页面重画
+                vTaskResume(Menu_handling_fHandler);
+                vTaskResume(Key_GetNum_fHandler);
+                active = 0;
+                continue;
+            }
+            vTaskDelay(1);
+            continue;
+        }
+
+        if(!(bits & EVT_PAGE_MAX))
+        {
+            active = 0;
+            continue;
+        }
+        active = 1;
     /* 原为 xQueueReceive(...,portMAX_DELAY) 死等:模块未连接时采集任务不会往队列里送数据
        (Max30102_Work_f 在位检测不通过就直接跳过采样),本任务会永远阻塞在这里,
-       既刷不出界面,也回不到循环顶部判断退出条件(g_exit_req);
-       而退出键中断已经先把屏幕清掉并写上"Exiting...",于是页面卡死在这行字上。
-       改为带超时接收:超时也会回到循环顶部重新判断退出条件 */
+       既刷不出界面,也回不到循环顶部判断退出条件;
+       改为非阻塞取数,等待节拍由 Page_Wait 的 200ms 承担 */
     /* 局部刷新:静态标签只在进页面时画一次,数据到达时只重写 SpO2 与心率两个数字 */
     if(!frame_drawn)
     {
@@ -456,18 +598,17 @@ void Max30102_Show_f(void*arg)
         OLED_ShowString(4, 1, "***************");
         frame_drawn = 1;
     }
-    if(xQueueReceive(Max30102Handler,&g_blooddata,pdMS_TO_TICKS(200)) == pdTRUE)
+    if(xQueueReceive(Max30102Handler,&g_blooddata,0) == pdTRUE)
     {
         OLED_ShowNum(2,9,g_blooddata.SpO2,3);
         OLED_ShowNum(3,10,g_blooddata.heart,3);
     }
     
-    vTaskDelay(100);
    }
 }
 
 /* 串口接收分发任务:ISR 只把字节投进 UsartRxHandler,由本任务决定去向。
-   必须常驻运行 —— Show 页面下 Menu_handling_f 已挂起,退出指令只能靠本任务置 g_exit_req */
+   必须常驻运行 —— Show 页面下 Menu_handling_f 已挂起,退出指令只能靠本任务置事件位 */
 void Usart_Rx_f(void *arg)
 {
     uint8_t ch;
@@ -478,9 +619,12 @@ void Usart_Rx_f(void *arg)
         xQueueReceive(UsartRxHandler,&ch,portMAX_DELAY);
         if(ch == 0)                             //退出:任何语境下都优先,必须放在时间设置判断之前
         {
-            OLED_Clear();
-            OLED_ShowString(2,5,"Exiting...");
-            g_exit_req = 1;                     //与物理退出键统一到同一退出请求
+            /* 退出广播:置位而不是清标志,4 个 Show 任务都能观察到;
+               菜单态(没有页面位)忽略本次退出,避免退出位残留导致下次进页面立刻被弹回 */
+            if((xEventGroupGetBits(PageEventGroup) & EVT_PAGE_ALL) != 0)
+            {
+                xEventGroupSetBits(PageEventGroup, EVT_EXIT);
+            }
         }
         else if(global_var == 2)                //时间设置进行中:字节原样转给 SetTime_w,不做菜单解码
         {
@@ -488,11 +632,14 @@ void Usart_Rx_f(void *arg)
         }
         else if(ch == 5)                        //进入时间修改
         {
-            /* 这条指令本身也要排进时间队列:SetTime_w 的 case 0 会消费它并立刻打印输入提示。
-               与改造前一致(原 ISR 的 Flag_U/data 会被 SetTime_w 的首次等待直接取走),
-               否则提示要等到用户再发一个字节才出现,且那个字节会被 case 0 白白吃掉 */
-            xQueueSend(UsartTimeHandler,&ch,0);
-            global_var = 2;
+            /* 只在时间页前台时才接受:否则在菜单按 5 会给人"已进入修改"的错觉,
+               而且这条指令会一直留在队列里,等下次进时间页时突然进入修改态 */
+            if((xEventGroupGetBits(PageEventGroup) & EVT_PAGE_TIME) != 0)
+            {
+                /* 这条指令本身也要排进时间队列:SetTime_w 的 case 0 会消费它并立刻打印输入提示 */
+                xQueueSend(UsartTimeHandler,&ch,0);
+                global_var = 2;
+            }
         }
         else if((ch >= 1) && (ch <= 4))          //菜单功能选择
         {
@@ -528,32 +675,17 @@ void Menu_handling_f( void * arg )   //菜单处理任务
     { 
         /* 执行当前功能，再次按下退出功能 */
         case 1 : 
-            {   
-                taskENTER_CRITICAL();
-                vTaskResume(Time_Show_fHandler);vTaskSuspend(Key_GetNum_fHandler);vTaskSuspend(NULL);
-                taskEXIT_CRITICAL();}
+            Page_Enter(EVT_PAGE_TIME, Time_Show_fHandler);
             break;
         case 2 : 
-            {   
-                taskENTER_CRITICAL();
-                IN = 1;
-                vTaskResume(Adxl345_Show_fHandler);vTaskSuspend(Key_GetNum_fHandler);vTaskSuspend(NULL);
-                taskEXIT_CRITICAL();
-                }                 
+            IN = 1;                             //跌倒检测使能:只在进计步页时打开
+            Page_Enter(EVT_PAGE_STEP, Adxl345_Show_fHandler);
             break;
         case 3 : 
-           {   
-                taskENTER_CRITICAL();
-                vTaskResume(DTH11_Show_fHandler);vTaskSuspend(Key_GetNum_fHandler);vTaskSuspend(NULL);
-                taskEXIT_CRITICAL();
-                }   
+            Page_Enter(EVT_PAGE_DHT, DTH11_Show_fHandler);
             break;
         case 4 : 
-            {   
-                taskENTER_CRITICAL();
-                vTaskResume(Max30102_Show_fHandler);vTaskSuspend(Key_GetNum_fHandler);vTaskSuspend(NULL);
-                taskEXIT_CRITICAL();
-                }      
+            Page_Enter(EVT_PAGE_MAX, Max30102_Show_fHandler);
             break;
         default :
             break;
@@ -565,26 +697,19 @@ void Menu_handling_f( void * arg )   //菜单处理任务
             /* 执行当前功能，再次按下退出功能 */
             case 1 : 
                 if(menu_index == 0)
-                {   taskENTER_CRITICAL();
-                    vTaskResume(Time_Show_fHandler);vTaskSuspend(Key_GetNum_fHandler);vTaskSuspend(NULL);
-                    taskEXIT_CRITICAL();}
+                {   Page_Enter(EVT_PAGE_TIME, Time_Show_fHandler);
+                }
                     
                 else if(menu_index == 1)
-                {   taskENTER_CRITICAL();
-                    IN = 1;
-                    vTaskResume(Adxl345_Show_fHandler);vTaskSuspend(Key_GetNum_fHandler);vTaskSuspend(NULL);
-                    taskEXIT_CRITICAL();
+                {   IN = 1;
+                    Page_Enter(EVT_PAGE_STEP, Adxl345_Show_fHandler);
                 }
                     
                 else if(menu_index == 2)
-                {   taskENTER_CRITICAL();
-                    vTaskResume(DTH11_Show_fHandler);vTaskSuspend(Key_GetNum_fHandler);vTaskSuspend(NULL);
-                    taskEXIT_CRITICAL();
+                {   Page_Enter(EVT_PAGE_DHT, DTH11_Show_fHandler);
                 }
                 else if(menu_index == 3)
-                {   taskENTER_CRITICAL();
-                    vTaskResume(Max30102_Show_fHandler);vTaskSuspend(Key_GetNum_fHandler);vTaskSuspend(NULL);
-                    taskEXIT_CRITICAL();
+                {   Page_Enter(EVT_PAGE_MAX, Max30102_Show_fHandler);
                 }
                 break;
             case 2 : 
@@ -697,15 +822,11 @@ void Start_MyTaskList(void *arg)  //任务启动任务
     }
     
     
-    /* 逐个判空再挂起:创建失败的句柄会被 FreeRTOS 置为 NULL,
-       而 vTaskSuspend(NULL) 的语义是"挂起调用者自身"——这里就是本任务,
-       一旦踩中会把自己挂起,导致后面的挂起全部落空、栈与TCB永久泄漏。
-       传 NULL 给 vTaskDelete 才是删除自身,两者语义不同,必须区分 */
-    if(Time_Show_fHandler     != NULL) vTaskSuspend(Time_Show_fHandler);
-    if(Adxl345_Show_fHandler  != NULL) vTaskSuspend(Adxl345_Show_fHandler);
-    if(DTH11_Show_fHandler    != NULL) vTaskSuspend(DTH11_Show_fHandler);
-    if(Max30102_Show_fHandler != NULL) vTaskSuspend(Max30102_Show_fHandler);
-    if(beep_Work_fHandler     != NULL) vTaskSuspend(beep_Work_fHandler);
+    /* 4 个 Show 任务不再在启动时挂起(B2):它们常驻运行,各自阻塞在 PageEventGroup 上,
+       由页面位决定谁在前台、由退出位广播给全部 4 个。
+       仍需判空后挂起的是 beep —— vTaskSuspend(NULL) 语义是挂起调用者自身,
+       句柄创建失败时必须跳过,否则会把本任务挂起、后续步骤全部落空 */
+    if(beep_Work_fHandler != NULL) vTaskSuspend(beep_Work_fHandler);
 
     taskEXIT_CRITICAL();
     vTaskDelete(NULL);
@@ -768,6 +889,16 @@ int main(void)
         OLED_Clear();
         OLED_ShowString(1,1,"QUEUE CREATE");
         OLED_ShowString(2,1,"FAIL");
+        while(1);
+    }
+
+    /* 页面/退出事件组必须在任务创建前存在:4 个 Show 任务启动后立即会用它做等待 */
+    PageEventGroup = xEventGroupCreate();
+    if(PageEventGroup == NULL)
+    {
+        OLED_Clear();
+        OLED_ShowString(1,1,"EVENT GROUP");
+        OLED_ShowString(2,1,"CREATE FAIL");
         while(1);
     }
     

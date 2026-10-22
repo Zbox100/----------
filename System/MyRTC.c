@@ -76,11 +76,13 @@ void SetTime_w()
         }
 				OLED_ShowString(3,1,(char *)step_name[key_count]);   //提示本字节对应字段
 				wait = 30000;
-				while((wait > 0) && (g_exit_req == 0) && (xQueueReceive(UsartTimeHandler,&rx_byte,pdMS_TO_TICKS(1)) != pdTRUE))
+				while((wait > 0) &&
+				      ((xEventGroupGetBits(PageEventGroup) & EVT_EXIT) == 0) &&
+				      (xQueueReceive(UsartTimeHandler,&rx_byte,pdMS_TO_TICKS(1)) != pdTRUE))
 				{
 				    wait--;                  //队列接收带1ms超时,等效原来的 vTaskDelay(1)
 				}
-				if(g_exit_req)          //物理退出键或蓝牙 0:立刻返回,不清标志,由 Time_Show_f 完成退出
+				if((xEventGroupGetBits(PageEventGroup) & EVT_EXIT) != 0)   //退出位已置:立刻返回,由 Time_Show_f 完成退页
 				{
 				    return;
 				}
