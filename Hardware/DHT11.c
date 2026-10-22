@@ -7,13 +7,13 @@
 #include "task.h"
 #include "queue.h"
 #include "DHT11.h"
-/*²¿·ÖÒýÓÃ*/
-extern QueueHandle_t DTH11Handler;
-// DHT11µÄÊý¾ÝÒý½ÅÁ¬½Óµ½GPIOAµÄGPIO_Pin_7
+/*ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½*/
+extern QueueHandle_t DHT11Handler;
+// DHT11ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Óµï¿½GPIOAï¿½ï¿½GPIO_Pin_7
 #define DHT11_DATA_PIN GPIO_Pin_7
 #define DHT11_DATA_GPIO_PORT                   GPIOA
 #define DHT11_DATA_GPIO_CLK RCC_APB2Periph_GPIOA
-// ¶ÁÈ¡GPIOµÄ×´Ì¬
+// ï¿½ï¿½È¡GPIOï¿½ï¿½×´Ì¬
 
 uint8_t DHT11_DATA_IN(void)
 {
@@ -33,7 +33,7 @@ void DHT_GPIO_Config_Input( void )
 {
 	GPIO_InitTypeDef GPIO_InitStruct;
 	
-	GPIO_InitStruct.GPIO_Mode = GPIO_Mode_IPU;                  //DHT11Êý¾ÝÏßÐèÉÏÀ­:Ô­¸¡¿ÕÊäÈëÔÚÄ£¿éÎ´½ÓÊ±»á¶Áµ½Ëæ»úµçÆ½
+	GPIO_InitStruct.GPIO_Mode = GPIO_Mode_IPU;                  //DHT11ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½:Ô­ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä£ï¿½ï¿½Î´ï¿½ï¿½Ê±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Æ½
 	GPIO_InitStruct.GPIO_Pin = DHT11_DATA_PIN;
 	GPIO_InitStruct.GPIO_Speed = GPIO_Speed_50MHz;
 	GPIO_Init(DHT11_DATA_GPIO_PORT, &GPIO_InitStruct);
@@ -41,22 +41,22 @@ void DHT_GPIO_Config_Input( void )
 
 void Pull_Low(void)
 {
-    // À­µÍPA7Òý½Å
+    // ï¿½ï¿½ï¿½ï¿½PA7ï¿½ï¿½ï¿½ï¿½
     GPIO_ResetBits(DHT11_DATA_GPIO_PORT, DHT11_DATA_PIN);
 }
 
 void Pull_High(void)
 {
-    // À­¸ßPA7Òý½Å
+    // ï¿½ï¿½ï¿½ï¿½PA7ï¿½ï¿½ï¿½ï¿½
     GPIO_SetBits(DHT11_DATA_GPIO_PORT, DHT11_DATA_PIN);
 }
 
 /****************************************************************************
-* Ãè Êö : ´ÓDHT11¶ÁÈ¡Ò»¸ö×Ö½Ú£¬MSBÏÈÐÐ
-* Èë ²Î : ÎÞ
-* ·µ»ØÖµ : uint8_t
+* ï¿½ï¿½ ï¿½ï¿½ : ï¿½ï¿½DHT11ï¿½ï¿½È¡Ò»ï¿½ï¿½ï¿½Ö½Ú£ï¿½MSBï¿½ï¿½ï¿½ï¿½
+* ï¿½ï¿½ ï¿½ï¿½ : ï¿½ï¿½
+* ï¿½ï¿½ï¿½ï¿½Öµ : uint8_t
 ***************************************************************************/
-/* ´ø³¬Ê±µÄµçÆ½µÈ´ý:ÂÖÑ¯Ö±µ½Òý½ÅµÈÓÚlevel,×î¶à¿Õ×ªtimeout´Î;·µ»Ø1=µÈµ½,0=³¬Ê±¡£Ìæ´úÔ­À´ÎÞÉÏÏÞµÄwhile(µçÆ½)ËÀµÈ */
+/* ï¿½ï¿½ï¿½ï¿½Ê±ï¿½Äµï¿½Æ½ï¿½È´ï¿½:ï¿½ï¿½Ñ¯Ö±ï¿½ï¿½ï¿½ï¿½ï¿½Åµï¿½ï¿½ï¿½level,ï¿½ï¿½ï¿½ï¿½×ªtimeoutï¿½ï¿½;ï¿½ï¿½ï¿½ï¿½1=ï¿½Èµï¿½,0=ï¿½ï¿½Ê±ï¿½ï¿½ï¿½ï¿½ï¿½Ô­ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Þµï¿½while(ï¿½ï¿½Æ½)ï¿½ï¿½ï¿½ï¿½ */
 static uint8_t DHT11_WaitLevel(uint8_t level, uint16_t timeout)
 {
     while((DHT11_DATA_IN() == level) && (--timeout));
@@ -68,17 +68,17 @@ static uint8_t Read_Byte(void)
 uint8_t i, temp=0;
 for(i=0;i<8;i++)
 {
-if(!DHT11_WaitLevel(Bit_RESET,500)) return 0xFF; //µÈ´ý50usµÍµçÆ½ÆðÊ¼Î»½áÊø(´ø³¬Ê±;³¬Ê±·µ»Ø0xFFÈÃÐ£ÑéºÍ±ØÈ»Ê§°Ü)
-/*DHT11 ÒÔ23~27usµÄ¸ßµçÆ½±íÊ¾¡°0¡±£¬ÒÔ68~74usµÄ¸ßµçÆ½±íÊ¾¡°1¡± */
-    Delay_fnus(40); //ÑÓÊ±40us,Õâ¸öÑÓÊ±ÐèÒª´óÓÚÊý¾Ý0³ÖÐøµÄÊ±¼ä¼´¿É
-if(DHT11_DATA_IN()==Bit_SET) // 40usºóÈÔÎª¸ßµçÆ½±íÊ¾Êý¾Ý¡°1¡±
+if(!DHT11_WaitLevel(Bit_RESET,500)) return 0xFF; //ï¿½È´ï¿½50usï¿½Íµï¿½Æ½ï¿½ï¿½Ê¼Î»ï¿½ï¿½ï¿½ï¿½(ï¿½ï¿½ï¿½ï¿½Ê±;ï¿½ï¿½Ê±ï¿½ï¿½ï¿½ï¿½0xFFï¿½ï¿½Ð£ï¿½ï¿½Í±ï¿½È»Ê§ï¿½ï¿½)
+/*DHT11 ï¿½ï¿½23~27usï¿½Ä¸ßµï¿½Æ½ï¿½ï¿½Ê¾ï¿½ï¿½0ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½68~74usï¿½Ä¸ßµï¿½Æ½ï¿½ï¿½Ê¾ï¿½ï¿½1ï¿½ï¿½ */
+    Delay_fnus(40); //ï¿½ï¿½Ê±40us,ï¿½ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½Òªï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½0ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ä¼´ï¿½ï¿½
+if(DHT11_DATA_IN()==Bit_SET) // 40usï¿½ï¿½ï¿½ï¿½Îªï¿½ßµï¿½Æ½ï¿½ï¿½Ê¾ï¿½ï¿½ï¿½Ý¡ï¿½1ï¿½ï¿½
 {
-DHT11_WaitLevel(Bit_SET,500); //µÈ´ýÊý¾ÝÎ»1µÄ¸ßµçÆ½½áÊø(´ø³¬Ê±)
-temp|=(uint8_t)(0x01<<(7-i)); //°ÑµÚ7-iÎ»ÖÃ1£¬MSBÏÈÐÐ
+DHT11_WaitLevel(Bit_SET,500); //ï¿½È´ï¿½ï¿½ï¿½ï¿½ï¿½Î»1ï¿½Ä¸ßµï¿½Æ½ï¿½ï¿½ï¿½ï¿½(ï¿½ï¿½ï¿½ï¿½Ê±)
+temp|=(uint8_t)(0x01<<(7-i)); //ï¿½Ñµï¿½7-iÎ»ï¿½ï¿½1ï¿½ï¿½MSBï¿½ï¿½ï¿½ï¿½
 }
-else // 40usºóÎªµÍµçÆ½±íÊ¾Êý¾Ý¡°0¡±
+else // 40usï¿½ï¿½Îªï¿½Íµï¿½Æ½ï¿½ï¿½Ê¾ï¿½ï¿½ï¿½Ý¡ï¿½0ï¿½ï¿½
 {
-temp&=(uint8_t)~(0x01<<(7-i)); //°ÑµÚ7-iÎ»ÖÃ0£¬MSBÏÈÐÐ
+temp&=(uint8_t)~(0x01<<(7-i)); //ï¿½Ñµï¿½7-iÎ»ï¿½ï¿½0ï¿½ï¿½MSBï¿½ï¿½ï¿½ï¿½
 }
 }
 return temp;
@@ -86,16 +86,16 @@ return temp;
 
 
 /***************************************************************************
-* Ãè Êö : ³õÊ¼»¯DHT11ÐÅºÅÒý½ÅÎªÊä³ö
-* Èë ²Î : ÎÞ
-* ·µ»ØÖµ : ÎÞ
+* ï¿½ï¿½ ï¿½ï¿½ : ï¿½ï¿½Ê¼ï¿½ï¿½DHT11ï¿½Åºï¿½ï¿½ï¿½ï¿½ï¿½Îªï¿½ï¿½ï¿½
+* ï¿½ï¿½ ï¿½ï¿½ : ï¿½ï¿½
+* ï¿½ï¿½ï¿½ï¿½Öµ : ï¿½ï¿½
 ***************************************************************************/
 void DHT11_GPIO_Config(void)
 {
 GPIO_InitTypeDef GPIO_InitStructure;
 RCC_APB2PeriphClockCmd(DHT11_DATA_GPIO_CLK, ENABLE);
 GPIO_InitStructure.GPIO_Pin = DHT11_DATA_PIN;
-GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP; //ÍÆÍìÊä³ö
+GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP; //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
 GPIO_Init(DHT11_DATA_GPIO_PORT, &GPIO_InitStructure);
 	
@@ -105,38 +105,38 @@ GPIO_SetBits(DHT11_DATA_GPIO_PORT, DHT11_DATA_PIN);
 
 
 /*************************************************************************
-* Ãè Êö : Ò»´ÎÍêÕûµÄÊý¾Ý´«ÊäÎª40bit£¬¸ßÎ»ÏÈ³ö
-* Èë ²Î : 8bit Êª¶ÈÕûÊý + 8bit Êª¶ÈÐ¡Êý + 8bit ÎÂ¶ÈÕûÊý + 8bit ÎÂ¶ÈÐ¡Êý + 8bit Ð£ÑéºÍ
-* ·µ»ØÖµ : uint8_t
+* ï¿½ï¿½ ï¿½ï¿½ : Ò»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ý´ï¿½ï¿½ï¿½Îª40bitï¿½ï¿½ï¿½ï¿½Î»ï¿½È³ï¿½
+* ï¿½ï¿½ ï¿½ï¿½ : 8bit Êªï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ + 8bit Êªï¿½ï¿½Ð¡ï¿½ï¿½ + 8bit ï¿½Â¶ï¿½ï¿½ï¿½ï¿½ï¿½ + 8bit ï¿½Â¶ï¿½Ð¡ï¿½ï¿½ + 8bit Ð£ï¿½ï¿½ï¿½
+* ï¿½ï¿½ï¿½ï¿½Öµ : uint8_t
 ***********************************************************************/
 #define SUCCESS 0
 #define ERROR 1
 
 uint8_t Read_DHT11(DHT11_Data_TypeDef *DHT11_Data)
 {
-    DHT_GPIO_Config_Output() ;// Êä³öÄ£Ê½
-    Pull_Low(); // Ö÷»úÀ­µÍ
-    vTaskDelay(pdMS_TO_TICKS(18));  //18msÆðÊ¼µÍµçÆ½:¸ÄÓÃ×èÈûÑÓÊ±ÈÃ³öCPU(Ô­Delay_fnmsÎª´¿Ã¦µÈ)
-    Pull_High(); // ×ÜÏßÀ­¸ß Ö÷»úÑÓÊ±30us
-    Delay_fnus(30); // ÑÓÊ±30us
-    DHT_GPIO_Config_Input(); // Ö÷»úÉèÎªÊäÈë ÅÐ¶Ï´Ó»úÏìÓ¦ÐÅºÅ
+    DHT_GPIO_Config_Output() ;// ï¿½ï¿½ï¿½Ä£Ê½
+    Pull_Low(); // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+    vTaskDelay(pdMS_TO_TICKS(18));  //18msï¿½ï¿½Ê¼ï¿½Íµï¿½Æ½:ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê±ï¿½Ã³ï¿½CPU(Ô­Delay_fnmsÎªï¿½ï¿½Ã¦ï¿½ï¿½)
+    Pull_High(); // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê±30us
+    Delay_fnus(30); // ï¿½ï¿½Ê±30us
+    DHT_GPIO_Config_Input(); // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Îªï¿½ï¿½ï¿½ï¿½ ï¿½Ð¶Ï´Ó»ï¿½ï¿½ï¿½Ó¦ï¿½Åºï¿½
 
-    if(DHT11_DATA_IN() == Bit_RESET) // ÅÐ¶Ï´Ó»úÊÇ·ñÓÐµÍµçÆ½ÏìÓ¦ÐÅºÅ Èç²»ÏìÓ¦ÔòÌø³ö£¬ÏìÓ¦ÔòÏòÏÂÔËÐÐ
+    if(DHT11_DATA_IN() == Bit_RESET) // ï¿½Ð¶Ï´Ó»ï¿½ï¿½Ç·ï¿½ï¿½ÐµÍµï¿½Æ½ï¿½ï¿½Ó¦ï¿½Åºï¿½ ï¿½ç²»ï¿½ï¿½Ó¦ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ó¦ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
     {
-        if(!DHT11_WaitLevel(Bit_RESET,2000)){DHT_GPIO_Config_Output();Pull_High();return ERROR;} //µÈ´ý´Ó»ú83usµÍµçÆ½ÏìÓ¦½áÊø(´ø³¬Ê±;³¬Ê±ÊÍ·Å×ÜÏß²¢ÅÐÊ§°Ü)
-        DHT11_WaitLevel(Bit_SET,2000); //µÈ´ý´Ó»ú87us¸ßµçÆ½ÏìÓ¦½áÊø(´ø³¬Ê±)
+        if(!DHT11_WaitLevel(Bit_RESET,2000)){DHT_GPIO_Config_Output();Pull_High();return ERROR;} //ï¿½È´ï¿½ï¿½Ó»ï¿½83usï¿½Íµï¿½Æ½ï¿½ï¿½Ó¦ï¿½ï¿½ï¿½ï¿½(ï¿½ï¿½ï¿½ï¿½Ê±;ï¿½ï¿½Ê±ï¿½Í·ï¿½ï¿½ï¿½ï¿½ß²ï¿½ï¿½ï¿½Ê§ï¿½ï¿½)
+        DHT11_WaitLevel(Bit_SET,2000); //ï¿½È´ï¿½ï¿½Ó»ï¿½87usï¿½ßµï¿½Æ½ï¿½ï¿½Ó¦ï¿½ï¿½ï¿½ï¿½(ï¿½ï¿½ï¿½ï¿½Ê±)
 
-        /*¿ªÊ¼½ÓÊÕÊý¾Ý*/
+        /*ï¿½ï¿½Ê¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½*/
         DHT11_Data->humi_int = Read_Byte();
         DHT11_Data->humi_deci = Read_Byte();
         DHT11_Data->temp_int = Read_Byte();
         DHT11_Data->temp_deci = Read_Byte();
         DHT11_Data->check_sum = Read_Byte();
 
-        DHT_GPIO_Config_Output(); // ¶ÁÈ¡½áÊø£¬Òý½Å¸ÄÎªÊä³öÄ£Ê½
-        Pull_High(); // Ö÷»úÀ­¸ß
+        DHT_GPIO_Config_Output(); // ï¿½ï¿½È¡ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Å¸ï¿½Îªï¿½ï¿½ï¿½Ä£Ê½
+        Pull_High(); // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 
-        /*¼ì²é¶ÁÈ¡µÄÊý¾ÝÊÇ·ñÕýÈ·*/
+        /*ï¿½ï¿½ï¿½ï¿½È¡ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ç·ï¿½ï¿½ï¿½È·*/
         if(DHT11_Data->check_sum == DHT11_Data->humi_int + DHT11_Data->humi_deci + DHT11_Data->temp_int + DHT11_Data->temp_deci)
             return SUCCESS;
         else
@@ -149,9 +149,9 @@ uint8_t Read_DHT11(DHT11_Data_TypeDef *DHT11_Data)
 }
 
 /***************************************************************************
-* Ãè Êö : ´®¿ÚÊµÊ±ÏÔÊ¾ÎÂÊª¶È
-* Èë ²Î : ÎÞ
-* ·µ»ØÖµ : ÎÞ
+* ï¿½ï¿½ ï¿½ï¿½ : ï¿½ï¿½ï¿½ï¿½ÊµÊ±ï¿½ï¿½Ê¾ï¿½ï¿½Êªï¿½ï¿½
+* ï¿½ï¿½ ï¿½ï¿½ : ï¿½ï¿½
+* ï¿½ï¿½ï¿½ï¿½Öµ : ï¿½ï¿½
 ***************************************************************************/
 void DHT11_SCAN(void)
 {
@@ -160,10 +160,10 @@ void DHT11_SCAN(void)
     
 	if(Read_DHT11(&DHT11_Data)==SUCCESS)
 		{
-			UsartPrintf(USART1,"\r\n¶ÁÈ¡DHT11³É¹¦!\r\n\r\nÊª¶ÈÎª%d.%d £¥RH £¬ÎÂ¶ÈÎª %d.%d ¡æ \r\n",
+			UsartPrintf(USART1,"\r\nï¿½ï¿½È¡DHT11ï¿½É¹ï¿½!\r\n\r\nÊªï¿½ï¿½Îª%d.%d ï¿½ï¿½RH ï¿½ï¿½ï¿½Â¶ï¿½Îª %d.%d ï¿½ï¿½ \r\n",
 											DHT11_Data.humi_int, DHT11_Data.humi_deci,
 											DHT11_Data.temp_int, DHT11_Data.temp_deci);
-            xQueueOverwrite(DTH11Handler,&DHT11_Data);
+            xQueueOverwrite(DHT11Handler,&DHT11_Data);
 
          }
 

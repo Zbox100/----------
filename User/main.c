@@ -36,8 +36,8 @@ TaskHandle_t Time_Show_fHandler;
 TaskHandle_t Adxl345_Work_fHandler;
 TaskHandle_t Adxl345_Show_fHandler;
 
-TaskHandle_t DTH11_Work_fHandler;
-TaskHandle_t DTH11_Show_fHandler;
+TaskHandle_t DHT11_Work_fHandler;
+TaskHandle_t DHT11_Show_fHandler;
 
 TaskHandle_t Max30102_Work_fHandler;
 TaskHandle_t Max30102_Show_fHandler;
@@ -51,8 +51,8 @@ TaskHandle_t Usart_Rx_fHandler;
 ////////////////////队列实现//////////////////////////////////////////////////////////
 QueueHandle_t QueueGetHandler  =NULL;
 QueueHandle_t KeyGetHandler    =NULL;
-QueueHandle_t ADX1345Handler   =NULL;
-QueueHandle_t DTH11Handler     =NULL;
+QueueHandle_t ADXL345Handler   =NULL;
+QueueHandle_t DHT11Handler     =NULL;
 QueueHandle_t Max30102Handler  =NULL;
 QueueHandle_t UsartRxHandler   =NULL;   //USART1 ISR -> Usart_Rx_f
 QueueHandle_t UsartMenuHandler =NULL;   //Usart_Rx_f  -> Menu_handling_f
@@ -189,7 +189,7 @@ void Adxl345_Work_f(void*arg)
                 armed = 0;                                     //解除武装,等待负向回落
             }
         }
-        xQueueOverwrite(ADX1345Handler,&Normal_num);   //深度1"仅保留最新值"队列用覆盖写,避免满队列丢值导致显示落后一拍
+        xQueueOverwrite(ADXL345Handler,&Normal_num);   //深度1"仅保留最新值"队列用覆盖写,避免满队列丢值导致显示落后一拍
       
         /* ① 逐轴检测：各自独立标志 */ 
         impact_x = (temp_X > 700 ) ? 1 : 0 ;
@@ -255,7 +255,7 @@ void Adxl345_Show_f( void * arg )
         }
         /* 只保留最新值:等待节拍由 Page_Wait 的 50ms 承担,这里非阻塞取一份快照,
            且仅在数值变化时重画,消掉固定延时叠加的显示滞后 */
-        if(xQueueReceive(ADX1345Handler,&dis_buf_R,0) == pdTRUE)
+        if(xQueueReceive(ADXL345Handler,&dis_buf_R,0) == pdTRUE)
         {
             if(dis_buf_R != last_shown)
             {
@@ -364,7 +364,7 @@ void Time_Show_f( void*arg ) //时间显示任务任务
                
 }
 
-void DTH11_Work_f(void*arg)
+void DHT11_Work_f(void*arg)
 {  
     TickType_t xLastWakeTime = xTaskGetTickCount(); //记录首次唤醒时刻,建立绝对时间基准网格
     const TickType_t xPeriod = pdMS_TO_TICKS(2000); //2s 采样周期:DHT11 手册要求两次读取间隔≥1s,过频会读到未刷新的旧值
@@ -377,7 +377,7 @@ void DTH11_Work_f(void*arg)
     }
 }
 
-void DTH11_Show_f(void*arg)
+void DHT11_Show_f(void*arg)
 {
     DHT11_Data_TypeDef DHT11_Data_R;
     uint8_t frame_drawn = 0;        //静态帧是否已画:退出清屏后置0,下次进页面重画
@@ -422,7 +422,7 @@ void DTH11_Show_f(void*arg)
             OLED_ShowString(4, 1, "***************");
             frame_drawn = 1;
         }
-        if(xQueueReceive(DTH11Handler,&DHT11_Data_R,0) == pdTRUE)
+        if(xQueueReceive(DHT11Handler,&DHT11_Data_R,0) == pdTRUE)
         {
             OLED_ShowNum(2,9,DHT11_Data_R.humi_int,2);
             OLED_ShowNum(2,12,DHT11_Data_R.humi_deci,2);
@@ -602,7 +602,7 @@ void Menu_handling_f( void * arg )   //菜单处理任务
             Page_Enter(EVT_PAGE_STEP, Adxl345_Show_fHandler);
             break;
         case 3 : 
-            Page_Enter(EVT_PAGE_DHT, DTH11_Show_fHandler);
+            Page_Enter(EVT_PAGE_DHT, DHT11_Show_fHandler);
             break;
         case 4 : 
             Page_Enter(EVT_PAGE_MAX, Max30102_Show_fHandler);
@@ -626,7 +626,7 @@ void Menu_handling_f( void * arg )   //菜单处理任务
                 }
                     
                 else if(menu_index == 2)
-                {   Page_Enter(EVT_PAGE_DHT, DTH11_Show_fHandler);
+                {   Page_Enter(EVT_PAGE_DHT, DHT11_Show_fHandler);
                 }
                 else if(menu_index == 3)
                 {   Page_Enter(EVT_PAGE_MAX, Max30102_Show_fHandler);
@@ -717,19 +717,23 @@ static void Create_Task(TaskFunction_t fn, char *name, uint16_t stack, UBaseType
 void Start_MyTaskList(void *arg)  //任务启动任务
 {
     taskENTER_CRITICAL();
+    /* 任务优先级分层:
+       5 = 重 Work(长非阻塞段/时序敏感采样):DHT11 位操作忙等、MAX30102 FIFO+FFT
+       4 = 其余 Work(时间读取、ADXL 50ms 采样) 与 交互任务(Menu/Key/beep/Usart_Rx)
+       3 = Show 显示任务(只画屏,最低) */
     Create_Task(Time_Work_f,     "Time_Work_f",      96, 4, &Time_Work_fHandler);  //96字:实测峰值38w
-    Create_Task(Time_Show_f,     "Time_Show_f",    128, 4, &Time_Show_fHandler);  //128字:内含 SetTime_w()(多路打印),实测峰值52w,按"+48余量"取128
+    Create_Task(Time_Show_f,     "Time_Show_f",    128, 3, &Time_Show_fHandler);  //128字:内含 SetTime_w()(多路打印),实测峰值52w,按"+48余量"取128
     Create_Task(Adxl345_Work_f,  "Adxl345_Work_f",   128, 4, &Adxl345_Work_fHandler);  //96字:实测峰值38w
-    Create_Task(Adxl345_Show_f,  "Adxl345_Show_f",   96, 4, &Adxl345_Show_fHandler);  //96字:实测峰值36w
-    Create_Task(DTH11_Work_f,    "DTH11_Work_f",    128, 4, &DTH11_Work_fHandler);  //128字:此前含临时栈水位打印时峰值66~70w,观测装置已拆,峰值更低
-    Create_Task(DTH11_Show_f,    "DTH11_Show_f",     96, 4, &DTH11_Show_fHandler);  //96字:实测峰值38w
-    Create_Task(Max30102_Work_f, "Max30102_Work_f", 176, 4, &Max30102_Work_fHandler);  //176字:实测峰值123w
-    Create_Task(Max30102_Show_f, "Max30102_Show_f",  96, 4, &Max30102_Show_fHandler);  //96字:实测峰值34w
+    Create_Task(Adxl345_Show_f,  "Adxl345_Show_f",   96, 3, &Adxl345_Show_fHandler);  //96字:实测峰值36w
+    Create_Task(DHT11_Work_f,    "DHT11_Work_f",    128, 5, &DHT11_Work_fHandler);  //128字:此前含临时栈水位打印时峰值66~70w,观测装置已拆,峰值更低
+    Create_Task(DHT11_Show_f,    "DHT11_Show_f",     96, 3, &DHT11_Show_fHandler);  //96字:实测峰值38w
+    Create_Task(Max30102_Work_f, "Max30102_Work_f", 176, 5, &Max30102_Work_fHandler);  //176字:实测峰值123w
+    Create_Task(Max30102_Show_f, "Max30102_Show_f",  96, 3, &Max30102_Show_fHandler);  //96字:实测峰值34w
 
     Create_Task(Menu_handling_f, "Menu_handling_f", 128, 4, &Menu_handling_fHandler);  //128字:实测峰值60w
     Create_Task(Key_GetNum_f,    "Key_GetNum_f",     96, 4, &Key_GetNum_fHandler);  //96字:实测峰值34w
     Create_Task(beep_Work_f,     "beep_Work_f",      96, 4, &beep_Work_fHandler);  //96字:实测峰值42w(已触发报警跑过打印分支);UsartPrintf 的 256B 缓冲是 static,不在任务栈上
-    Create_Task(Usart_Rx_f,      "Usart_Rx_f",       96, 3, &Usart_Rx_fHandler);  //96字:实测峰值32w
+    Create_Task(Usart_Rx_f,      "Usart_Rx_f",       96, 4, &Usart_Rx_fHandler);  //96字:实测峰值32w
 
     if(Task_Fail_Cnt > 0)
     {
@@ -757,8 +761,6 @@ void Start_MyTaskList(void *arg)  //任务启动任务
 int main(void)
 {
     BaseType_t xReceive;
-    DHT11_Data_TypeDef DHT11_Data_R2;
-    BloodData Trans;
 
     /* NVIC优先级分组:必须在任何NVIC_Init之前设置。misc.c的NVIC_Init会读AIRCR反推分组,
        若PRIGROUP保持复位值0会算出负移位数导致IP一律写成0x00。
@@ -799,11 +801,11 @@ int main(void)
     
     QueueGetHandler = xQueueCreate(1, sizeof(uint16_t) * 6);
     KeyGetHandler   = xQueueCreate(1, sizeof(uint8_t)  * 1);
-    ADX1345Handler  = xQueueCreate(1, sizeof(uint32_t)  * 1); 
-    DTH11Handler    = xQueueCreate(1, sizeof(DHT11_Data_TypeDef)  * 1); 
+    ADXL345Handler  = xQueueCreate(1, sizeof(uint32_t)  * 1); 
+    DHT11Handler    = xQueueCreate(1, sizeof(DHT11_Data_TypeDef)  * 1); 
     Max30102Handler = xQueueCreate(1, sizeof(BloodData)  * 1);
     if((QueueGetHandler == NULL) || (KeyGetHandler == NULL) ||
-       (ADX1345Handler == NULL) || (DTH11Handler == NULL) || (Max30102Handler == NULL))
+       (ADXL345Handler == NULL) || (DHT11Handler == NULL) || (Max30102Handler == NULL))
     {
         /* 与上面三条串口队列同样的处理:OLED 已可用,先显示再停机,
            否则这些队列为 NULL 时各任务会在 xQueueReceive/xQueueSend 上踩空指针 */
