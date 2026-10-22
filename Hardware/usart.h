@@ -5,7 +5,7 @@
 #include "stm32f10x.h"
 #include <stdio.h>
 
-#define USART_DEBUG		USART1		//���Դ�ӡ��ʹ�õĴ�����
+#define USART_DEBUG		USART1		//调试打印使用的串口
 
 void Usart1_Init(unsigned int baud);
 

@@ -4,8 +4,8 @@
 /**
   ******************************************************************************
   * @file    blood.c
-  * @author  ������������
-  * @brief   ѪҺ������ת������
+  * @author  锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷
+  * @brief   血液锟斤拷锟斤拷锟斤拷转锟斤拷锟斤拷锟斤拷
   ******************************************************************************
   */
 
@@ -14,45 +14,45 @@
 #include "task.h"                         //??vTaskDelay
 
 extern QueueHandle_t Max30102Handler;
-uint16_t g_fft_index = 0;         	 	//fft��������±�
+uint16_t g_fft_index = 0;         	 	//fft锟斤拷锟斤拷锟斤拷锟斤拷卤锟?
 
-struct compx s1[FFT_N+16];           	//FFT������������S[1]��ʼ��ţ����ݴ�С�Լ�����
-struct compx s2[FFT_N+16];           	//FFT������������S[1]��ʼ��ţ����ݴ�С�Լ�����
+struct compx s1[FFT_N+16];           	//FFT锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷S[1]锟斤拷始锟斤拷牛锟斤拷锟斤拷荽锟叫★拷约锟斤拷锟斤拷锟?
+struct compx s2[FFT_N+16];           	//FFT锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷S[1]锟斤拷始锟斤拷牛锟斤拷锟斤拷荽锟叫★拷约锟斤拷锟斤拷锟?
 
 struct
 {
-	float 	Hp	;			//Ѫ�쵰��	
-	float 	HpO2;			//����Ѫ�쵰��
+	float 	Hp	;			//血锟届蛋锟斤拷	
+	float 	HpO2;			//锟斤拷锟斤拷血锟届蛋锟斤拷
 	
-}g_BloodWave;//ѪҺ��������
+}g_BloodWave;//血液锟斤拷锟斤拷锟斤拷锟斤拷
 
-BloodData g_blooddata = {0};					//ѪҺ���ݴ洢
+BloodData g_blooddata = {0};					//血液锟斤拷锟捷存储
 
-#define CORRECTED_VALUE			47   			//�궨ѪҺ��������
+#define CORRECTED_VALUE			47   			//锟疥定血液锟斤拷锟斤拷锟斤拷锟斤拷
 
 /*funcation start ------------------------------------------------------------*/
-//ѪҺ�����Ϣ����
+//血液锟斤拷锟斤拷锟较拷锟斤拷锟?
 void blood_data_update(void)
 {
-	uint16_t wait_ms = 0;                 //�����ȴ���������ʱ��(ms),���ڳ�ʱ�˳�
-	//��־λ��ʹ��ʱ ����ȡFIFO
+	uint16_t wait_ms = 0;                 //连续等待新样本的时长(ms),用于超时退出
+	//标志位，使用时 ，读取FIFO
 	g_fft_index=0;
 	while(g_fft_index < FFT_N)
 	{
-		if(MAX30102_INTPin_Read()!=0)      //INTΪ��:FIFO����������
+		if(MAX30102_INTPin_Read()!=0)      //INT为高:FIFO暂无新数据
 		{
-			if(wait_ms >= 2000)            //����2sû��������:�ж�ģ���쳣,�������βɼ�
+			if(wait_ms >= 2000)            //连续2s没有新样本:判定模块异常,放弃本次采集
 			{
 				break;
 			}
-			vTaskDelay(1);                 //�ó�CPU 1ms,��������ʱæ�Ȱ�Э��ʽ����������
+			vTaskDelay(1);                 //让出CPU 1ms,避免无延时忙等把协作式调度器挂死
 			wait_ms++;
 			continue;
 		}
-		wait_ms = 0;                       //��������,��յȴ���ʱ
-		//��ȡFIFO
+		wait_ms = 0;                       //有新数据,清空等待计时
+		//读取FIFO
 		max30102_read_fifo();              //read from MAX30102 FIFO2
-		//������д��fft���벢�����±�
+		//采样后写入fft输入并递增下标
 		if(g_fft_index < FFT_N)
 		{
 			s1[g_fft_index].real = fifo_red;
@@ -64,12 +64,12 @@ void blood_data_update(void)
 	}
 }
 
-//ѪҺ��Ϣת��
+//血液锟斤拷息转锟斤拷
 void blood_data_translate(void)
 {	
 	float n_denom;
 	uint16_t i;
-	//ֱ���˲�
+	//直锟斤拷锟剿诧拷
 	float dc_red =0; 
 	float dc_ir =0;
 	float ac_red =0; 
@@ -88,7 +88,7 @@ void blood_data_translate(void)
 		s2[i].real =  s2[i].real - dc_ir ; 
 	}
 	
-	//�ƶ�ƽ���˲�
+	//锟狡讹拷平锟斤拷锟剿诧拷
 //	UsartPrintf(USART_DEBUG,"***********8 pt Moving Average red******************************************************\r\n");
 //	
 	for(i = 1;i < FFT_N-1;i++) 
@@ -99,7 +99,7 @@ void blood_data_translate(void)
 			n_denom= ( s2[i-1].real + 2*s2[i].real + s2[i+1].real);
 			s2[i].real=  n_denom/4.00; 			
 	}
-	//�˵�ƽ���˲�
+	//锟剿碉拷平锟斤拷锟剿诧拷
 	for(i = 0;i < FFT_N-8;i++) 
 	{
 			n_denom= ( s1[i].real+s1[i+1].real+ s1[i+2].real+ s1[i+3].real+ s1[i+4].real+ s1[i+5].real+ s1[i+6].real+ s1[i+7].real);
@@ -116,19 +116,19 @@ void blood_data_translate(void)
 //		UsartPrintf(USART_DEBUG,"%f\r\n",s2[i].real);	
 //	}
 //	UsartPrintf(USART_DEBUG,"**************************************************************************************************\r\n");
-	//��ʼ�任��ʾ	
+	//锟斤拷始锟戒换锟斤拷示	
 	g_fft_index = 0;	
-	//���ٸ���Ҷ�任
+	//锟斤拷锟劫革拷锟斤拷叶锟戒换
 	FFT(s1);
 	FFT(s2);
-	//��ƽ��
-//	UsartPrintf(USART_DEBUG,"��ʼFFT�㷨****************************************************************************************************\r\n");
+	//锟斤拷平锟斤拷
+// UsartPrintf(USART_DEBUG,"FFT start ****************************************************************************************************\r\n");
 	for(i = 0;i < FFT_N;i++) 
 	{
 		s1[i].real=sqrtf(s1[i].real*s1[i].real+s1[i].imag*s1[i].imag);
 		s2[i].real=sqrtf(s2[i].real*s2[i].real+s2[i].imag*s2[i].imag);
 	}
-	//���㽻������
+	//锟斤拷锟姐交锟斤拷锟斤拷锟斤拷
 	for (i=1 ; i<FFT_N ; i++ ) 
 	{
 		ac_red += s1[i].real ;
@@ -145,7 +145,7 @@ void blood_data_translate(void)
 //		UsartPrintf(USART_DEBUG,"%f\r\n",s2[i].real);
 //	}
 //	
-//	UsartPrintf(USART_DEBUG,"����FFT�㷨***************************************************************************************************************\r\n");
+// UsartPrintf(USART_DEBUG,"FFT end ******************************************************************************************************\r\n");
 	for(i = 0;i < 50;i++) 
 	{
 		if(s1[i].real<=10)
@@ -153,7 +153,7 @@ void blood_data_translate(void)
 	}
 	
 	//UsartPrintf(USART_DEBUG,"%d\r\n",(int)i);
-	//��ȡ��ֵ��ĺ�����  �������������Ϊ 
+	//锟斤拷取锟斤拷值锟斤拷暮锟斤拷锟斤拷锟? 锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟轿?
 	int s1_max_index = find_max_num_index(s1, 15);
 	int s2_max_index = find_max_num_index(s2, 15);
 //	UsartPrintf(USART_DEBUG,"%d\r\n",s1_max_index);
@@ -172,14 +172,14 @@ void blood_data_translate(void)
 void blood_Loop(void)
 {
 	
-	//ѪҺ��Ϣ��ȡ
+	//血液锟斤拷息锟斤拷取
 	blood_data_update();
-	//ѪҺ��Ϣת��
+	//血液锟斤拷息转锟斤拷
 	blood_data_translate();
-	//��ʾѪҺ״̬��Ϣ
+	//锟斤拷示血液状态锟斤拷息
 	g_blooddata.SpO2 = (g_blooddata.SpO2 > 99.99) ? 99.99:g_blooddata.SpO2;
-    UsartPrintf(USART_DEBUG,"ָ������%3d",g_blooddata.heart);
-    UsartPrintf(USART_DEBUG,"ָ��Ѫ��%0.2f",g_blooddata.SpO2);
+    UsartPrintf(USART_DEBUG,"Heart rate: %3d",g_blooddata.heart);
+    UsartPrintf(USART_DEBUG,"SpO2: %0.2f",g_blooddata.SpO2);
     
     xQueueOverwrite(Max30102Handler,&g_blooddata);
 	

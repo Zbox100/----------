@@ -8,15 +8,15 @@
 
 /*
 ************************************************************
-*	�������ƣ�	Usart1_Init
+*	函数名称:	Usart1_Init
 *
-*	�������ܣ�	����1��ʼ��
+*	函数功能:	串口1初始化
 *
-*	��ڲ�����	baud���趨�Ĳ�����
+*	入口参数:	baud 设定的波特率
 *
-*	���ز�����	��
+*	返回参数:	无
 *
-*	˵����		TX-PA9		RX-PA10���˲���������������
+*	说明:		TX-PA9		RX-PA10,两个引脚均复用为串口
 ************************************************************
 */
  void Usart1_Init(unsigned int baud)
@@ -42,16 +42,16 @@
 	GPIO_Init(GPIOA, &gpioInitStruct);
 	
 	usartInitStruct.USART_BaudRate = baud;
-	usartInitStruct.USART_HardwareFlowControl = USART_HardwareFlowControl_None;		//��Ӳ������
-	usartInitStruct.USART_Mode = USART_Mode_Rx | USART_Mode_Tx;						//���պͷ���
-	usartInitStruct.USART_Parity = USART_Parity_No;									//��У��
-	usartInitStruct.USART_StopBits = USART_StopBits_1;								//1λֹͣλ
-	usartInitStruct.USART_WordLength = USART_WordLength_8b;							//8λ����λ
+	usartInitStruct.USART_HardwareFlowControl = USART_HardwareFlowControl_None;		//无硬件流控
+	usartInitStruct.USART_Mode = USART_Mode_Rx | USART_Mode_Tx;						//接收和发送
+	usartInitStruct.USART_Parity = USART_Parity_No;									//无校验
+	usartInitStruct.USART_StopBits = USART_StopBits_1;								//1位停止位
+	usartInitStruct.USART_WordLength = USART_WordLength_8b;							//8位数据位
 	USART_Init(USART1, &usartInitStruct);
 	
-	USART_Cmd(USART1, ENABLE);														//ʹ�ܴ���
+	USART_Cmd(USART1, ENABLE);														//使能串口
 	
-	USART_ITConfig(USART1, USART_IT_RXNE, ENABLE);									//ʹ�ܽ����ж�
+	USART_ITConfig(USART1, USART_IT_RXNE, ENABLE);									//使能接收中断
 	
 	nvicInitStruct.NVIC_IRQChannel = USART1_IRQn;
 	nvicInitStruct.NVIC_IRQChannelCmd = ENABLE;
@@ -63,17 +63,17 @@
 
 /*
 ************************************************************
-*	�������ƣ�	Usart_SendString
+*	函数名称:	Usart_SendString
 *
-*	�������ܣ�	�������ݷ���
+*	函数功能:	发送字符串数据
 *
-*	��ڲ�����	USARTx��������
-*				str��Ҫ���͵�����
-*				len�����ݳ���
+*	入口参数:	USARTx 串口句柄
+*				str 要发送的数据
+*				len 数据长度
 *
-*	���ز�����	��
+*	返回参数:	无
 *
-*	˵����		
+*	说明:
 ************************************************************
 */
 void Usart_SendString(USART_TypeDef *USARTx, unsigned char *str, unsigned short len)
@@ -83,24 +83,24 @@ void Usart_SendString(USART_TypeDef *USARTx, unsigned char *str, unsigned short 
 	
 	for(; count < len; count++)
 	{
-		USART_SendData(USARTx, *str++);									//��������
-		while(USART_GetFlagStatus(USARTx, USART_FLAG_TC) == RESET);		//�ȴ��������
+		USART_SendData(USARTx, *str++);									//发送数据
+		while(USART_GetFlagStatus(USARTx, USART_FLAG_TC) == RESET);		//等待发送完成
 	}
 
 }
 
 /*
 ************************************************************
-*	�������ƣ�	UsartPrintf
+*	函数名称:	UsartPrintf
 *
-*	�������ܣ�	��ʽ����ӡ
+*	函数功能:	格式化打印
 *
-*	��ڲ�����	USARTx��������
-*				fmt����������
+*	入口参数:	USARTx 串口句柄
+*				fmt 格式化字符串
 *
-*	���ز�����	��
+*	返回参数:	无
 *
-*	˵����		
+*	说明:		使用 256 字节 static 缓冲,不占用调用者任务栈
 ************************************************************
 */
 void UsartPrintf(USART_TypeDef *USARTx, char *fmt,...)
@@ -111,7 +111,7 @@ void UsartPrintf(USART_TypeDef *USARTx, char *fmt,...)
 	unsigned char *pStr = UsartPrintfBuf;
 	
 	va_start(ap, fmt);
-	vsnprintf((char *)UsartPrintfBuf, sizeof(UsartPrintfBuf), fmt, ap);							//��ʽ��
+	vsnprintf((char *)UsartPrintfBuf, sizeof(UsartPrintfBuf), fmt, ap);							//格式化
 	va_end(ap);
 	
 	while(*pStr != 0)
@@ -124,15 +124,15 @@ void UsartPrintf(USART_TypeDef *USARTx, char *fmt,...)
 
 /*
 ************************************************************
-*	�������ƣ�	USART1_IRQHandler
+*	函数名称:	USART1_IRQHandler
 *
-*	�������ܣ�	����1�շ��ж�
+*	函数功能:	串口1收发中断
 *
-*	��ڲ�����	��
+*	入口参数:	无
 *
-*	���ز�����	��
+*	返回参数:	无
 *
-*	˵����	������д	
+*	说明:	中断服务程序
 ************************************************************
 */
 

@@ -8,8 +8,8 @@
 /**
   ******************************************************************************
   * @file    Max30102.h
-  * @author  ������������
-  * @brief   Max30102��������ͷ�ļ�
+  * @author  智能手环项目组
+  * @brief   MAX30102 驱动头文件
   
   ******************************************************************************
 */
@@ -48,7 +48,7 @@
 #define Led_PORT 						GPIOC
 #define Led_Pin 						GPIO_Pin_9
 
-#define SAMPLES_PER_SECOND 					100	//���Ƶ��
+#define SAMPLES_PER_SECOND					100	//采样频率
 
 extern uint16_t fifo_red;
 extern uint16_t fifo_ir;

@@ -3,11 +3,11 @@
 
 typedef struct
 {
-    uint8_t humi_int;    // Êª¶ÈµÄÕûÊı²¿·Ö
-    uint8_t humi_deci;   // Êª¶ÈµÄĞ¡Êı²¿·Ö
-    uint8_t temp_int;    // ÎÂ¶ÈµÄÕûÊı²¿·Ö
-    uint8_t temp_deci;   // ÎÂ¶ÈµÄĞ¡Êı²¿·Ö
-    uint8_t check_sum;   // Ğ£ÑéºÍ
+    uint8_t humi_int;    // æ¹¿åº¦çš„æ•´æ•°éƒ¨åˆ†
+    uint8_t humi_deci;   // æ¹¿åº¦çš„å°æ•°éƒ¨åˆ†
+    uint8_t temp_int;    // æ¸©åº¦çš„æ•´æ•°éƒ¨åˆ†
+    uint8_t temp_deci;   // æ¸©åº¦çš„å°æ•°éƒ¨åˆ†
+    uint8_t check_sum;   // æ ¡éªŒå’Œ
 } DHT11_Data_TypeDef;
 
 
